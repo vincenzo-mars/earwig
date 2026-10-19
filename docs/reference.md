@@ -327,7 +327,7 @@ Tema unico dark fisso: niente variante `dark:`, niente token semantici.
 
 Alias `$lib` → `src/lib` dichiarato sia in `vite.config.ts` (`resolve.alias`) sia in `tsconfig.json` (`compilerOptions.paths`, mai `baseUrl`): non essendo SvelteKit non è automatico.
 
-Icone dell'app in `src-tauri/icons/`: `bundle.icon` di `tauri.conf.json` referenzia `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns` e `icon.ico` (piattaforma Windows), mentre `icon.png` e `64x64.png` restano come sorgenti a risoluzione piena e non entrano nel bundle.
+Icone dell'app in `src-tauri/icons/`: `bundle.icon` di `tauri.conf.json` referenzia `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns` e `icon.ico` (piattaforma Windows), mentre `icon.png` e `64x64.png` restano come sorgenti a risoluzione piena e non entrano nel bundle. `public/icon.png` (512×512) alimenta il logo in `Onboarding.svelte`, la favicon webview in `index.html` e il logo in `README.md`.
 
 ## Lint e format
 
