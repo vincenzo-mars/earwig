@@ -13,6 +13,25 @@ Formato:
 
 ---
 
+## 2026-10-19 — GitHub Actions CI e Release automatica su merge a main
+
+**Obiettivo:** Configurare CI per validare pull request e rami di feature/fix, e automatizzare build e release di Earwig ad ogni merge sul branch `main`.
+
+**Fatto:**
+- Creato `.github/workflows/ci.yml`: esegue linting (Biome) e typecheck (Svelte) per il frontend, e `cargo check` su runner `macos-14` (Apple Silicon M1) con cache Cargo (`Swatinem/rust-cache`).
+- Creato `.github/workflows/release.yml`: si attiva ad ogni push/merge su `main` (o manualmente via `workflow_dispatch`).
+- Caching intelligente dei binari server: `whisper-server` e `llama-server` in `src-tauri/binaries/` vengono cachati con chiave hash sugli script `build-whisper-server.sh` e `build-llama-server.sh` (evitando minuti superflui di compilazione CMake a ogni merge).
+- Packaging macOS: compilazione bundle Tauri (`--target aarch64-apple-darwin`), estrazione del `.dmg`, generazione dell'archivio `.zip` del bundle `.app` tramite `ditto` (preservando attributi e symlink macOS), e calcolo checksum SHA-256 (`checksums-sha256.txt`).
+- Strategia di tag e rilascio robusta: se `v<version>` (da `package.json`) non esiste ancora sul remote, usa `v<version>`; in caso di merge successivi con la stessa versione prima di un bump esplicito, genera un tag univoco `v<version>-b<run_number>` senza conflitti.
+- Pubblicazione automatica con note di rilascio tramite `softprops/action-gh-release@v2`.
+- Aggiornata la documentazione in `docs/architecture.md`.
+
+**Decisioni:**
+- Runner `macos-14` (Apple Silicon M1): nativo per la compilazione Metal e per le librerie Swift/ScreenCaptureKit di macOS.
+- Target release principale `aarch64-apple-darwin`: garantisce massima stabilità, velocità e compatibilità nativa su tutti i Mac Apple Silicon.
+
+---
+
 ## 2026-10-19 — Ombre a token
 
 **Obiettivo:** 4 `shadow-[...]` inline con rgba hardcoded, e i keyframes `pulse-rec` che duplicavano in rgba il colore di `--color-rec-strong`.

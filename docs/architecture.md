@@ -277,3 +277,27 @@ Il download/scelta del modello LLM è opzionale e lazy: `Onboarding.svelte` rest
 | tauri-plugin-http | 2.x | Fetch lato Rust per le chiamate AI SDK verso `llama-server` (evita ATS/CORS nel webview) |
 
 Frontend: `ai` (core, `streamText`) + `@ai-sdk/openai-compatible` per il provider locale, `@tauri-apps/plugin-http` per il fetch, tutti in `src/lib/llm.ts`. Deliberatamente **non** `@ai-sdk/svelte` (vedi sopra).
+
+## Pipeline CI/CD e Release
+
+Earwig include due workflow GitHub Actions in `.github/workflows/`:
+
+### 1. Continuous Integration (`ci.yml`)
+- **Trigger**: Pull request su qualunque branch e push su `develop`, `feat/**`, `fix/**`.
+- **Jobs**:
+  - `frontend-check`: esegue `npm run lint` (Biome) e `npm run typecheck` (Svelte).
+  - `rust-check`: runner `macos-14` (Apple Silicon), installa toolchain Rust `stable` (target `aarch64-apple-darwin`), applica caching di Cargo via `Swatinem/rust-cache` ed esegue `cargo check --manifest-path src-tauri/Cargo.toml`.
+
+### 2. Continuous Delivery & Release (`release.yml`)
+- **Trigger**: Push/merge su `main` e `workflow_dispatch` (avvio manuale).
+- **Runner**: `macos-14` (Apple Silicon M1 nativo).
+- **Flusso**:
+  1. `actions/checkout@v4` con `fetch-depth: 0` (necessario per tag e changelog).
+  2. Setup Node.js 20 con cache npm + `npm ci`.
+  3. Setup Rust `stable` per target `aarch64-apple-darwin` con cache Cargo.
+  4. Caching server STT/LLM: `actions/cache@v4` cacha `src-tauri/binaries/` con chiave calcolata sull'hash di `scripts/build-whisper-server.sh` e `scripts/build-llama-server.sh`. Se cache miss, esegue gli script di compilazione.
+  5. Build Tauri bundle release: `npm run tauri build -- --target aarch64-apple-darwin`.
+  6. Calcolo tag e versione: legge la versione da `package.json`. Se `v<version>` è già presente su Git (merge multipli prima di un version bump), genera automaticamente `v<version>-b<run_number>`; se è inedito, usa `v<version>`.
+  7. Raccolta asset: estrae il `.dmg`, crea l'archivio `.zip` del bundle `Earwig.app` usando `ditto` (per preservare symlink e permessi macOS) e calcola i checksum SHA-256 (`checksums-sha256.txt`).
+  8. Creazione GitHub Release: pubblica la release via `softprops/action-gh-release@v2` con note di rilascio generate automaticamente da GitHub e gli asset allegati.
+
