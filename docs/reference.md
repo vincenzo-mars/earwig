@@ -201,6 +201,8 @@ Il riallineamento manuale dell'entry aperta dopo un rilancio non serve più: lis
 
 La home: hero REC in alto e `RecordingsList` sotto. Bottone REC/STOP, "o carica un file", cronometro, stato della trascrizione ed eventuale errore: tutto letto da `session`, nessuna prop. Ospita anche il bottone impostazioni (`fixed` in alto a destra).
 
+Il bottone non usa glifi Unicode: dentro un flex centrato (`gap-2.5`, `tracking-[0.12em]`) un dot `size-2.5` in `bg-current` (`rounded-full` a riposo, `rounded-[2px]` in STOP) accanto alla sola label, con `-mr-[0.12em]` che compensa lo spazio frazionario del letter-spacing in coda. `session.isRecording` sceglie ramo e token ombra (`shadow-rec-active` contro `shadow-rec`).
+
 Dopo uno STOP o un import riusciti chiama `recordings.load(true)`: la lista sta nella stessa schermata e senza quel refresh la registrazione appena fatta non comparirebbe. Il refresh vive qui e non dentro `session` perché la direzione delle dipendenze fra store è `recordings → session`, non il contrario.
 
 ### `RecordingsList.svelte`
@@ -315,7 +317,7 @@ Il rosso non è più colore di brand: vive in due token separati, usati solo dal
 | `rec` | `#ab2b29` | REC a riposo |
 | `rec-strong` | `#d23434` | REC in registrazione, timer, glow (`@keyframes pulse-rec`) |
 
-La gerarchia del testo non usa alpha di `brand-cream`: quattro token `ink-*` derivati con `color-mix` (`ink-primary` 100%, `ink-secondary` 70%, `ink-muted` 50%, `ink-faint` 40%). Gli alpha frazionari di `brand-cream` (`/5`–`/20`) restano per bordi e superfici, mai per testo. I semafori di stato sono token (`ok`, `warn`, `danger`, `danger-strong` per la superficie del bottone distruzioni): badge, dot dell'indicatore e messaggi di errore li leggono, niente palette Tailwind grezza. Le ombre sono token (`shadow-raised` per gli elementi flottanti, `shadow-pop` per il logo onboarding, `shadow-rec`/`shadow-rec-active` per l'alone del REC).
+La gerarchia del testo non usa alpha di `brand-cream`: quattro token `ink-*` derivati con `color-mix` (`ink-primary` 100%, `ink-secondary` 70%, `ink-muted` 50%, `ink-faint` 40%). Gli alpha frazionari di `brand-cream` (`/5`–`/20`) restano per bordi e superfici, mai per testo. I semafori di stato sono token (`ok`, `warn`, `danger`, `danger-strong` per la superficie del bottone distruzioni): badge, dot dell'indicatore e messaggi di errore li leggono, niente palette Tailwind grezza. Le ombre sono token (`shadow-raised` per gli elementi flottanti, `shadow-pop` per il logo onboarding, `shadow-rec`/`shadow-rec-active` per l'alone del REC). I due token REC sono stack doppi: sotto il glow `color-mix` sul colore di stato, un `inset 0 2px 0` bianco al 14% dà volume al cerchio senza introdurre un gradiente.
 
 I campi di testo (settings e chat) mostrano il focus della tastiera con bordo e ring su `brand-light`, mai `outline` di default.
 

@@ -43,7 +43,7 @@ async function handleRecord() {
        server, che galleggia in basso a sinistra. -->
   <div class="flex shrink-0 flex-col items-center gap-4 px-6 pt-10 pb-6 text-center">
     <button
-      class={`h-30 w-30 cursor-pointer rounded-full border-none text-base font-bold text-ink-primary transition-[background,box-shadow,transform] duration-200 active:scale-[0.96] disabled:cursor-default disabled:opacity-50 ${
+      class={`flex h-30 w-30 cursor-pointer items-center justify-center gap-2.5 rounded-full border-none text-base font-bold tracking-[0.12em] text-ink-primary transition-[background,box-shadow,transform] duration-200 active:scale-[0.96] disabled:cursor-default disabled:opacity-50 ${
         session.isRecording
           ? "animate-pulse-rec bg-rec-strong shadow-rec-active"
           : "bg-rec shadow-rec hover:bg-rec-strong"
@@ -53,7 +53,13 @@ async function handleRecord() {
       title={!session.isRecording && !session.canRecord ? session.recordGateReason : undefined}
       aria-label={session.isRecording ? "Stop recording" : "Start recording"}
     >
-      {session.isRecording ? "■ STOP" : "⬤ REC"}
+      {#if session.isRecording}
+        <span class="size-2.5 rounded-[2px] bg-current"></span>
+        <span class="-mr-[0.12em]">STOP</span>
+      {:else}
+        <span class="size-2.5 rounded-full bg-current"></span>
+        <span class="-mr-[0.12em]">REC</span>
+      {/if}
     </button>
 
     {#if !session.isRecording}
