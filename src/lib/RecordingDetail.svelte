@@ -65,7 +65,7 @@ async function handleRetry() {
       <!-- La pagina è a tutta larghezza, il testo no: oltre una settantina di
            caratteri per riga l'occhio perde il capo della riga successiva. -->
       <div class="mx-auto flex w-full max-w-[72ch] flex-col gap-4">
-        <div class="rounded-xl border border-brand-cream/10 bg-brand-darker px-5 py-4">
+        <div class="card">
           {#if entry.transcript}
             <TranscriptView transcript={entry.transcript} />
           {:else if entry.error}

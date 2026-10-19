@@ -48,7 +48,7 @@ async function handleRetry(entry: RecordingEntry) {
     {#each recordings.all as entry (entry.folder_path)}
       {@const status = transcriptStatusInfo(entry)}
       <div
-        class="flex items-center justify-between gap-3 rounded-xl border border-brand-cream/10 bg-brand-darker px-5 py-4 transition-colors hover:border-brand-cream/20"
+        class="flex items-center justify-between gap-3 card transition-colors hover:border-brand-cream/20"
       >
         <button
           class="flex flex-1 cursor-pointer items-center justify-between gap-3 border-none bg-transparent p-0 text-left disabled:cursor-default"

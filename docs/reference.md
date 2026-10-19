@@ -319,6 +319,8 @@ La gerarchia del testo non usa alpha di `brand-cream`: quattro token `ink-*` der
 
 I campi di testo (settings e chat) mostrano il focus della tastiera con bordo e ring su `brand-light`, mai `outline` di default.
 
+Le card di riga condividono la classe `.card` (in `App.css`, `@layer components`): `rounded-xl border border-brand-cream/10 bg-brand-darker px-5 py-4` in un solo posto (liste di registrazioni, note, dettaglio). Le durate animate sono token (`--animate-blink`, `--animate-pulse-rec`), così come lo stack mono per timer e duration (`--font-mono`).
+
 Tema unico dark fisso: niente variante `dark:`, niente token semantici.
 
 Alias `$lib` → `src/lib` dichiarato sia in `vite.config.ts` (`resolve.alias`) sia in `tsconfig.json` (`compilerOptions.paths`, mai `baseUrl`): non essendo SvelteKit non è automatico.

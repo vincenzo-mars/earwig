@@ -67,6 +67,13 @@
   --shadow-rec: 0 4px 16px color-mix(in srgb, var(--color-rec) 40%, transparent);
   --shadow-rec-active: 0 4px 16px
     color-mix(in srgb, var(--color-rec-strong) 40%, transparent);
+
+  /* Motion: le durate vivono qui, non inline nel markup. */
+  --animate-blink: blink 0.8s ease-in-out infinite;
+  --animate-pulse-rec: pulse-rec 1.5s ease-in-out infinite;
+
+  /* Timer e durate di trascrizione: stack mono esplicito invece del default. */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
 @layer base {
@@ -90,6 +97,14 @@
 
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  /* Card di riga: contenitore standard per gli elementi di lista
+     (registrazioni, note, dettaglio). Un solo posto per correggerle tutte. */
+  .card {
+    @apply rounded-xl border border-brand-cream/10 bg-brand-darker px-5 py-4;
   }
 }
 

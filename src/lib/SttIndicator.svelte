@@ -9,7 +9,7 @@ let { status }: { status: SttStatus } = $props();
 // transizione in corso senza errori. Il tipo li distingue, la UI no.
 const TRANSIENT = {
   label: "Avvio...",
-  dot: "bg-warn animate-[blink_0.8s_ease-in-out_infinite]",
+  dot: "bg-warn animate-blink",
 };
 
 const STATUS: Record<SttStatus, { label: string; dot: string }> = {

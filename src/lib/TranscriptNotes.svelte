@@ -173,7 +173,7 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
 </script>
 
 {#if entry.transcript}
-  <div class="flex flex-col gap-4 rounded-xl border border-brand-cream/10 bg-brand-darker px-5 py-4">
+  <div class="flex flex-col gap-4 card">
     <div class="flex items-center justify-between">
       <h3 class="m-0 text-xs font-semibold tracking-wider text-ink-muted uppercase">
         Riassunto e note
