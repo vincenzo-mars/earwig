@@ -23,5 +23,3 @@ dist-ssr
 *.sln
 *.sw?
 
-# Legacy Claude Code worktree (attivo su feat/dark-gray-palette; resta finché vive il worktree)
-.claude/worktrees/

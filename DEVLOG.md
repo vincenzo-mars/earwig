@@ -13,6 +13,23 @@ Formato:
 
 ---
 
+## 2026-10-19 — Migrazione config di progetto da Claude Code a OpenCode
+
+**Obiettivo:** il progetto si guida con OpenCode, non con Claude Code: config, skill e regola documentazione migrati, nessun residuo Claude nel repo.
+
+**Fatto:**
+- `CLAUDE.md` rinominato `AGENTS.md` (titolo e riferimenti depotenziati da "Claude")
+- Permessi da `.claude/settings.json` migrati in `opencode.json` (regole `shell` con resource/effect)
+- Regola documentazione da hook `PreToolUse` Claude a pre-commit hook git: `githooks/pre-commit` + `core.hooksPath githooks`, bypass invariato `SKIP_DOCS=1`
+- Skill `run-heedm` e `fresh-install` spostate in `.opencode/skills/`
+- Worktree `design+dark-gray-palette` rimosso da `.claude/worktrees/` (branch intatto), directory `.claude/` eliminata, entry legacy dal `.gitignore` tolta
+- `docs/onboarding.md` aggiornato al nuovo nome del file istruzioni
+
+**Decisioni:**
+- Il check docs è un hook git e non un plugin OpenCode: vincola chiunque committi, agente o umano, senza plugin TS da mantenere; costo, `core.hooksPath` va impostato a mano in ogni clone (annotato in `AGENTS.md`)
+
+---
+
 ## 2026-08-24 — Lista registrazioni in home
 
 **Obiettivo:** vedere le registrazioni precedenti appena sotto il bottone REC, senza passare da un'altra pagina.
