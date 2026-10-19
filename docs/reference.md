@@ -223,12 +223,12 @@ Pillola di stato flottante in basso a sinistra, presente su ogni rotta. Unica pr
 |---|---|---|
 | `checking` | grigio lampeggiante | "Controllo..." |
 | `starting` | ambra lampeggiante | "Avvio server..." |
-| `running` | verde | "Server attivo" |
+| `running` | verde attenuato, senza pillola | "Server attivo" |
 | `error` | rosso | "Server non disponibile" |
 | `stopped` | grigio fisso | "Server fermo" |
 | `loading` | ambra lampeggiante | "Caricamento..." |
 
-Il colore semantico vive solo sul dot: il testo resta `brand-cream` per uniformità. `loading` esiste solo perché `SttStatus` è ora un alias di `ServerStatus`: whisper-server non lo usa mai (apre la porta solo a modello già caricato), questo componente mostra solo lo stato STT, non quello LLM (nessuna pill separata per l'LLM, vedi `architecture.md`).
+Il colore semantico vive solo sul dot: il testo resta `brand-cream` per uniformità, tranne il `running`, stato sano che si abbassa a 45% senza pillola (bg e ombra esistono solo per gli stati che chiedono attenzione). `loading` esiste solo perché `SttStatus` è ora un alias di `ServerStatus`: whisper-server non lo usa mai (apre la porta solo a modello già caricato), questo componente mostra solo lo stato STT, non quello LLM (nessuna pill separata per l'LLM, vedi `architecture.md`).
 
 ### `Onboarding.svelte`
 

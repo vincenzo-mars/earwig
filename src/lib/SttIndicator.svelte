@@ -17,8 +17,10 @@ const STATUS: Record<SttStatus, { label: string; text: string; dot: string }> =
     },
     running: {
       label: "Server attivo",
-      text: "text-brand-cream",
-      dot: "bg-green-500",
+      // Stato sano: deve sparire, non decorare. Gli stati anomali
+      // (errore, avvio) tengono la pillola e il testo pieno.
+      text: "text-brand-cream/45",
+      dot: "bg-green-500/70",
     },
     error: {
       label: "Server non disponibile",
@@ -41,8 +43,13 @@ const STATUS: Record<SttStatus, { label: string; text: string; dot: string }> =
   };
 </script>
 
+<!-- La pillola (sfondo + ombra) esiste solo per gli stati che chiedono
+     attenzione: il running sano galleggia senza contenitore, come un
+     dettaglio di servizio e non come un elemento UI da guardare. -->
 <div
-  class="fixed left-4 bottom-4 py-2 px-3 z-10 flex items-center rounded-full bg-brand-darker/85 shadow-[0_2px_12px_rgba(0,0,0,0.3)]"
+  class={`fixed left-4 bottom-4 z-10 flex items-center rounded-full py-2 px-3 ${
+    status === "running" ? "" : "bg-brand-darker/85 shadow-[0_2px_12px_rgba(0,0,0,0.3)]"
+  }`}
 >
   <div
     class={`flex items-center gap-2 text-sm font-medium ${STATUS[status].text}`}
