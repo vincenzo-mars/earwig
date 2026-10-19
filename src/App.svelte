@@ -1,5 +1,5 @@
 <script lang="ts">
-import Router from "svelte-spa-router";
+import Router, { router } from "svelte-spa-router";
 import Onboarding from "./lib/Onboarding.svelte";
 import { routes } from "./lib/routes";
 import SttIndicator from "./lib/SttIndicator.svelte";
@@ -21,6 +21,10 @@ $effect(() => {
 <div class="flex h-screen flex-col overflow-hidden">
   <Router {routes} />
 
+<!-- La pillola vive su ogni rotta tranne /settings: lì lo stato del server
+     è già dentro le sezioni ServerControls, duplicarlo a schermo è rumore. -->
+{#if router.location !== "/settings"}
   <SttIndicator status={servers.sttStatus} />
+{/if}
 </div>
 {/if}
