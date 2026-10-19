@@ -58,7 +58,7 @@ async function handleRecord() {
 
     {#if !session.isRecording}
       <button
-        class="cursor-pointer border-none bg-transparent text-sm text-brand-cream/70 underline underline-offset-4 transition-colors hover:text-brand-cream disabled:cursor-default disabled:opacity-50"
+        class="cursor-pointer border-none bg-transparent text-xs text-brand-cream/45 transition-colors hover:text-brand-cream/75 hover:underline underline-offset-4 disabled:cursor-default disabled:opacity-50"
         onclick={handleImport}
         disabled={session.isTranscribing || !session.canRecord}
         title={!session.canRecord ? session.recordGateReason : undefined}

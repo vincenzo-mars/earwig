@@ -13,6 +13,17 @@ Formato:
 
 ---
 
+## 2026-10-19 — Home in verticale e gerarchia dei testi
+
+**Obiettivo:** la home è un pannello da registrazione, non un dashboard: finestra di default verticale (420×640, era 860×640 orizzontale) e gerarchia tipografica che segua l'uso reale.
+
+**Decisioni:**
+- "o carica un file" scende a azione terziaria (45% cream, underline solo in hover): prima competeva con il label REGISTRAZIONI e con le righe, ma l'azione secondaria vera è la lista, l'import è l'eccezione
+- Ordine di evidenza voluto: REC → righe della lista (contenuto, 100%) → stati transitori (trascrizione, gate, 50%) → import (45%) → label sezione (40%)
+- Stato vuoto della lista come card tratteggiata con icona: per un utente nuovo è il primo volto della home, una riga-segnaposto diceva "nessun dato" invece di dire cosa fare
+
+---
+
 ## 2026-10-19 — Migrazione config di progetto da Claude Code a OpenCode
 
 **Obiettivo:** il progetto si guida con OpenCode, non con Claude Code: config, skill e regola documentazione migrati, nessun residuo Claude nel repo.
