@@ -10,7 +10,7 @@ const VARIANTS = {
   solid:
     "cursor-pointer rounded-lg bg-brand-cream px-3 py-2 text-sm font-semibold text-brand-ink transition hover:bg-brand-cream-dim disabled:cursor-not-allowed disabled:bg-brand-lighter disabled:text-ink-faint",
   danger:
-    "cursor-pointer rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-ink-primary transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-600/30",
+    "cursor-pointer rounded-lg bg-danger-strong px-3 py-2 text-sm font-semibold text-ink-primary transition hover:bg-danger-strong/90 disabled:cursor-not-allowed disabled:bg-danger-strong/30",
   primary:
     "cursor-pointer rounded-lg bg-brand-cream px-6 py-2.5 text-sm font-semibold text-brand-ink transition hover:bg-brand-cream-dim",
 } as const;

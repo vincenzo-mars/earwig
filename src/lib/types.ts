@@ -140,7 +140,7 @@ const TRANSCRIPT_STATUS_INFO: Record<
 > = {
   transcribed: {
     label: "trascritto",
-    className: "border border-green-800/60 bg-green-950/40 text-green-400",
+    className: "border border-ok/30 bg-ok/10 text-ok",
   },
   pending: {
     label: "in attesa",
@@ -148,7 +148,7 @@ const TRANSCRIPT_STATUS_INFO: Record<
   },
   failed: {
     label: "fallito",
-    className: "border border-red-800/60 bg-red-950/40 text-red-400",
+    className: "border border-danger/30 bg-danger/10 text-danger",
   },
 };
 

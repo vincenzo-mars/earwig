@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Folder, Mic, MonitorCheck, MonitorX, Save } from "@lucide/svelte";
+import { Folder, Mic, MonitorCheck, MonitorX } from "@lucide/svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -93,13 +93,6 @@ $effect(() => {
     unlistenLlm.then((fn) => fn());
   };
 });
-
-async function save() {
-  if (!settings) return;
-  await invoke("save_stt_settings", { settings });
-  await servers.refreshStt();
-  close();
-}
 
 // ── Server STT / LLM ──────────────────────────────────────────────────────────
 // Tutti i comandi server hanno la stessa forma: busy flag, invoke, refresh
@@ -234,10 +227,10 @@ function ramBadge(
   if (systemRamGb == null) return null;
   const ratio = sizeBytes / 1024 ** 3 / systemRamGb;
   if (ratio < 0.35)
-    return { label: "Consigliato per la tua RAM", className: "text-green-400" };
+    return { label: "Consigliato per la tua RAM", className: "text-ok" };
   if (ratio < 0.6)
-    return { label: "Ok per la tua RAM", className: "text-amber-400" };
-  return { label: "Pesante per la tua RAM", className: "text-red-400" };
+    return { label: "Ok per la tua RAM", className: "text-warn" };
+  return { label: "Pesante per la tua RAM", className: "text-danger" };
 }
 
 async function refreshScreenRecordingStatus() {
@@ -276,14 +269,8 @@ async function startDownload() {
   </div>
 {/snippet}
 
-{#snippet actions()}
-  <Button variant="icon" class="-mr-2" title="Salva" aria-label="Salva impostazioni" onclick={save}>
-    <Save size={16} />
-  </Button>
-{/snippet}
-
 <div class="flex h-full w-full flex-col">
-  <PageHeader title="Impostazioni" onBack={close} actions={settings ? actions : undefined} />
+  <PageHeader title="Impostazioni" onBack={close} />
 
   <div class="flex-1 overflow-y-auto px-6 pt-5 pb-18 text-ink-primary">
     {#if settings}
@@ -326,7 +313,7 @@ async function startDownload() {
               {#if screenRecordingGranted}
                 <MonitorCheck
                   size={16}
-                  class="mt-0.5 shrink-0 text-green-500"
+                  class="mt-0.5 shrink-0 text-ok"
                 />
               {:else}
                 <MonitorX
@@ -364,7 +351,7 @@ async function startDownload() {
           </div>
 
           {#if settings?.localReady}
-            <p class="m-0 text-xs font-medium text-green-400">
+            <p class="m-0 text-xs font-medium text-ok">
               Modello installato e pronto.
             </p>
           {:else}
@@ -501,7 +488,7 @@ async function startDownload() {
                       {#if hfFilesLoading}
                         <p class="m-0 text-2xs text-ink-muted">Carico i file...</p>
                       {:else if hfFilesGated}
-                        <p class="m-0 text-2xs text-amber-400">
+                        <p class="m-0 text-2xs text-warn">
                           🔒 Richiede autenticazione Hugging Face: non supportato.
                         </p>
                       {:else if hfFiles.length === 0}

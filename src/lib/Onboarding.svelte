@@ -76,7 +76,7 @@ async function startDownload() {
       Scarica il modello
     </Button>
     {#if error}
-      <p class="m-0 max-w-100 text-xs text-red-400">{error}</p>
+      <p class="m-0 max-w-100 text-xs text-danger">{error}</p>
     {/if}
   {/if}
 </div>

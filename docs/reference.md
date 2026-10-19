@@ -221,10 +221,10 @@ Indicatore di stato flottante in basso a sinistra, presente su ogni rotta tranne
 
 | Stato | Dot | Label |
 |---|---|---|
-| `checking`, `starting` | ambra lampeggiante | "Avvio..." |
-| `running` | verde attenuato | "Server attivo" |
-| `error` | rosso | "Server non disponibile" |
-| `stopped` | grigio fisso | "Server fermo" |
+| `checking`, `starting` | `warn` lampeggiante | "Avvio..." |
+| `running` | `ok` attenuato | "Server attivo" |
+| `error` | `danger` | "Server non disponibile" |
+| `stopped` | `brand-light` (idle) | "Server fermo" |
 
 Nessuno stato ha sfondo o ombra: l'indicatore è un dettaglio di servizio, il colore semantico vive solo sul dot e il testo è `brand-cream/50` uniforme. `SttStatus` esclude `loading` (esiste solo per llama-server, che apre la porta a modello da caricare: whisper-server no), quindi l'indicatore STT non lo conosce e mostra solo lo stato STT, non quello LLM (vedi `architecture.md`).
 

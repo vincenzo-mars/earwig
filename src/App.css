@@ -51,6 +51,14 @@
     var(--color-brand-cream) 40%,
     transparent
   );
+
+  /* Semafori di stato: ok/warn/danger in un solo posto. Il brand resta neutro,
+     questi compaiono solo come feedback di stato (badge, dot, errori);
+     danger-strong è la superficie piena del bottone distruzioni. */
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+  --color-danger-strong: #dc2626;
 }
 
 @layer base {

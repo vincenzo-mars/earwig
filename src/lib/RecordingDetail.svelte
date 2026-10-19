@@ -69,7 +69,7 @@ async function handleRetry() {
           {#if entry.transcript}
             <TranscriptView transcript={entry.transcript} />
           {:else if entry.error}
-            <p class="m-0 text-sm text-red-400">Trascrizione fallita: {entry.error}</p>
+            <p class="m-0 text-sm text-danger">Trascrizione fallita: {entry.error}</p>
           {:else}
             <p class="m-0 text-sm text-ink-muted">
               Trascrizione non ancora disponibile.

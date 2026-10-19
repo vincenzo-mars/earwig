@@ -81,7 +81,7 @@ async function handleRecord() {
       </p>
     {/if}
     {#if session.error}
-      <p class="m-0 max-w-95 text-xs text-red-400">{session.error}</p>
+      <p class="m-0 max-w-95 text-xs text-danger">{session.error}</p>
     {/if}
   </div>
 

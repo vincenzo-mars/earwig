@@ -261,7 +261,7 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
       {/if}
 
       {#if summaryError}
-        <p class="m-0 text-sm text-red-400">{summaryError}</p>
+        <p class="m-0 text-sm text-danger">{summaryError}</p>
       {/if}
     {/if}
 
@@ -277,7 +277,7 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
           onStop={stopStreaming}
         />
         {#if chatError}
-          <p class="m-0 mt-2 text-sm text-red-400">{chatError}</p>
+          <p class="m-0 mt-2 text-sm text-danger">{chatError}</p>
         {/if}
       </div>
     {/if}

@@ -9,7 +9,7 @@ let { status }: { status: SttStatus } = $props();
 // transizione in corso senza errori. Il tipo li distingue, la UI no.
 const TRANSIENT = {
   label: "Avvio...",
-  dot: "bg-amber-500 animate-[blink_0.8s_ease-in-out_infinite]",
+  dot: "bg-warn animate-[blink_0.8s_ease-in-out_infinite]",
 };
 
 const STATUS: Record<SttStatus, { label: string; dot: string }> = {
@@ -17,15 +17,15 @@ const STATUS: Record<SttStatus, { label: string; dot: string }> = {
   starting: TRANSIENT,
   running: {
     label: "Server attivo",
-    dot: "bg-green-500/70",
+    dot: "bg-ok/60",
   },
   error: {
     label: "Server non disponibile",
-    dot: "bg-red-400",
+    dot: "bg-danger",
   },
   stopped: {
     label: "Server fermo",
-    dot: "bg-gray-400",
+    dot: "bg-brand-light",
   },
 };
 </script>

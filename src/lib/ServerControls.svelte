@@ -43,7 +43,7 @@ let {
       <span class="text-xs text-ink-secondary">Stato:</span>
       <span
         class={`text-xs font-medium ${
-          status === "running" ? "text-green-400" : "text-ink-muted"
+          status === "running" ? "text-ok" : "text-ink-muted"
         }`}
       >
         {status === "running"
@@ -55,7 +55,7 @@ let {
     </div>
 
     {#if error}
-      <p class="m-0 text-xs text-red-400 leading-tight">{error}</p>
+      <p class="m-0 text-xs text-danger leading-tight">{error}</p>
     {:else if hint}
       <p class="m-0 text-xs text-ink-muted leading-tight">{hint}</p>
     {/if}
