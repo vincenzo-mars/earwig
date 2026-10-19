@@ -59,7 +59,9 @@ export type ServerStatus =
   | "stopped"
   | "loading";
 
-export type SttStatus = ServerStatus;
+// whisper-server non passa mai da "loading" (apre la porta solo a modello già
+// caricato, a differenza di llama-server): lo stato non esiste per l'STT.
+export type SttStatus = Exclude<ServerStatus, "loading">;
 
 // ── Note per registrazione (riassunto + chat locale) ───────────────────────────
 
