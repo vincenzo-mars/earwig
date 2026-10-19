@@ -236,9 +236,9 @@ Prop: `onContinue: () => void`, chiamata dal bottone "Continua"; `App.svelte` la
 
 ### `SettingsPanel.svelte`
 
-Rotta `/settings` con permessi OS, download dei modelli, controllo server STT/LLM e percorsi. Corpo a griglia (`grid-cols-1 md:grid-cols-2`, tetto `max-w-400`); il bottone Salva sta nelle `actions` del `PageHeader`, non in fondo alla pagina. Colonna sinistra (core, sempre rilevante): Permessi, Modello Whisper, Server STT, Cartella registrazioni. Colonna destra (opzionale, additiva): Modello LLM, Server LLM — stessa distinzione già in [`architecture.md`](architecture.md) fra STT (sempre necessario) e LLM (riassunto/chat, lazy). Sotto il breakpoint `md` (768px) le due colonne si impilano in una sola. La sezione permessi viene per prima perché blocca tutto il resto.
+Rotta `/settings` con permessi OS, download dei modelli, controllo server STT/LLM e percorsi. Corpo a griglia (`grid-cols-1 md:grid-cols-2`, tetto `max-w-400`); il `PageHeader` ha solo il back, non c'è un bottone Salva. Colonna sinistra (core, sempre rilevante): Permessi, Modello Whisper, Server STT, Cartella registrazioni. Colonna destra (opzionale, additiva): Modello LLM, Server LLM — stessa distinzione già in [`architecture.md`](architecture.md) fra STT (sempre necessario) e LLM (riassunto/chat, lazy). Sotto il breakpoint `md` (768px) le due colonne si impilano in una sola. La sezione permessi viene per prima perché blocca tutto il resto.
 
-Nessuna prop: era un modal con otto props passate da `App.svelte`, ora legge `servers` e `session` direttamente. Back e salvataggio chiudono con `pop()`, non con una callback del genitore.
+Nessuna prop: era un modal con otto props passate da `App.svelte`, ora legge `servers` e `session` direttamente. Il back chiude con `pop()`, non con una callback del genitore. Non serve un bottone Salva: l'unico campo persistito è la scelta del modello LLM, salvata subito da `set_llm_model` lato Rust, mentre `localReady`/`llmReady` vengono ricalcolati da disco ad ogni `get_stt_settings`.
 
 Le sezioni server STT e LLM sono due istanze di `ServerControls.svelte` (vedi sotto). Tutti i comandi server passano da due helper interni (`runStt(cmd, opts?)` / `runLlm(cmd)`: busy flag, `invoke`, refresh dello stato in `App.svelte`, errore nella card di stato); lato STT:
 - **Avvia** → `start_stt_server`, poi `servers.refreshStt()`
@@ -315,7 +315,11 @@ Il rosso non è più colore di brand: vive in due token separati, usati solo dal
 | `rec` | `#ab2b29` | REC a riposo |
 | `rec-strong` | `#d23434` | REC in registrazione, timer, glow (`@keyframes pulse-rec`) |
 
-Tema unico dark fisso: niente variante `dark:`, niente token semantici. Le opacità frazionarie (`/10`, `/40`, `/85`) sostituiscono una scala di grigi separata.
+La gerarchia del testo non usa alpha di `brand-cream`: quattro token `ink-*` derivati con `color-mix` (`ink-primary` 100%, `ink-secondary` 70%, `ink-muted` 50%, `ink-faint` 40%). Gli alpha frazionari di `brand-cream` (`/5`–`/20`) restano per bordi e superfici, mai per testo. I semafori di stato sono token (`ok`, `warn`, `danger`, `danger-strong` per la superficie del bottone distruzioni): badge, dot dell'indicatore e messaggi di errore li leggono, niente palette Tailwind grezza. Le ombre sono token (`shadow-raised` per gli elementi flottanti, `shadow-pop` per il logo onboarding, `shadow-rec`/`shadow-rec-active` per l'alone del REC).
+
+I campi di testo (settings e chat) mostrano il focus della tastiera con bordo e ring su `brand-light`, mai `outline` di default.
+
+Tema unico dark fisso: niente variante `dark:`, niente token semantici.
 
 Alias `$lib` → `src/lib` dichiarato sia in `vite.config.ts` (`resolve.alias`) sia in `tsconfig.json` (`compilerOptions.paths`, mai `baseUrl`): non essendo SvelteKit non è automatico.
 

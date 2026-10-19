@@ -453,7 +453,7 @@ async function startDownload() {
 
           <input
             type="text"
-            class="rounded-lg border border-brand-cream/15 bg-brand-dark/50 px-2.5 py-1.5 text-xs text-ink-primary placeholder:text-ink-faint focus:outline-none"
+            class="rounded-lg border border-brand-cream/15 bg-brand-dark/50 px-2.5 py-1.5 text-xs text-ink-primary placeholder:text-ink-faint focus:outline-none focus:border-brand-light/70 focus:ring-2 focus:ring-brand-light/40"
             placeholder="Cerca un modello GGUF su Hugging Face..."
             bind:value={hfQuery}
             onfocus={initSearch}

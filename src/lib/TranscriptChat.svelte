@@ -69,7 +69,7 @@ function handleKeydown(e: KeyboardEvent) {
 
   <div class="flex items-end gap-2">
     <textarea
-      class="min-h-10 flex-1 resize-none rounded-lg border border-brand-cream/15 bg-brand-darker px-3 py-2 text-sm text-ink-primary placeholder:text-ink-faint focus:outline-none disabled:opacity-50"
+      class="min-h-10 flex-1 resize-none rounded-lg border border-brand-cream/15 bg-brand-darker px-3 py-2 text-sm text-ink-primary placeholder:text-ink-faint focus:outline-none focus:border-brand-light/70 focus:ring-2 focus:ring-brand-light/40 disabled:opacity-50"
       rows="1"
       placeholder="Fai una domanda sulla trascrizione..."
       bind:value={draft}
