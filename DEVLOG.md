@@ -13,6 +13,17 @@ Formato:
 
 ---
 
+## 2026-10-19 — Scala tipografica centralizzata
+
+**Obiettivo:** il markup spargeva 13 font size diversi, 9 dei quali valori letterali (`0.62rem` → `0.85rem`) visivamente indistinguibili: la scala tipografica entra nei token `@theme` accanto a colori e raggi.
+
+**Decisioni:**
+- Quattro gradini per la UI: `2xs` (0.7rem, nuovo token: micro-label, badge, duration mono), `xs` (0.75rem: testo secondario, stati, hint), `sm` (0.875rem: titoli di riga e bottoni), sopra restano `base` e `2xl` riservati a REC e al timer
+- I bottoni `Button` erano incoerenti fra varianti (solid/danger 0.8rem, primary sm): ora tutti `sm`
+- Spacing intoccato: è già sullo scale standard di Tailwind, il "sistema" per i margini esiste ed è quello
+
+---
+
 ## 2026-10-19 — Home in verticale e gerarchia dei testi
 
 **Obiettivo:** la home è un pannello da registrazione, non un dashboard: finestra di default verticale (420×640, era 860×640 orizzontale) e gerarchia tipografica che segua l'uso reale.

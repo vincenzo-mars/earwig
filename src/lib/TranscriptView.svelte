@@ -12,7 +12,7 @@ const groups = $derived(groupSegments(transcript.segments));
     {@const { label, color } = speakerInfo(g.speaker)}
     <div class="flex flex-col gap-1">
       <div
-        class="flex items-center gap-1.5 text-[0.72rem] font-bold tracking-wider uppercase"
+        class="flex items-center gap-1.5 text-2xs font-bold tracking-wider uppercase"
         style={`color: ${color}`}
       >
         {label}

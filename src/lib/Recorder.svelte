@@ -68,7 +68,7 @@ async function handleRecord() {
     {/if}
 
     {#if !session.isRecording && !session.canRecord}
-      <p class="m-0 max-w-95 text-[0.85rem] text-brand-cream/50">{session.recordGateReason}</p>
+      <p class="m-0 max-w-95 text-xs text-brand-cream/50">{session.recordGateReason}</p>
     {/if}
     {#if session.isRecording}
       <p class="m-0 font-mono text-2xl font-semibold text-rec-strong">
@@ -81,14 +81,14 @@ async function handleRecord() {
       </p>
     {/if}
     {#if session.error}
-      <p class="m-0 max-w-95 text-[0.85rem] text-red-400">{session.error}</p>
+      <p class="m-0 max-w-95 text-xs text-red-400">{session.error}</p>
     {/if}
   </div>
 
   <div class="flex flex-1 flex-col gap-3 overflow-y-auto px-6 pb-18">
     <div class="mx-auto flex w-full max-w-200 flex-col gap-3">
       <h2
-        class="m-0 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-brand-cream/40"
+        class="m-0 text-2xs font-semibold uppercase tracking-[0.12em] text-brand-cream/40"
       >
         Registrazioni
       </h2>

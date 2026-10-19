@@ -196,7 +196,7 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
         <div class="flex flex-col gap-3 text-sm text-brand-cream/90">
           <p class="m-0 leading-relaxed">{notes.summary.text}</p>
           <div>
-            <h4 class="m-0 mb-1 text-[0.7rem] font-semibold tracking-wider text-brand-cream/40 uppercase">
+            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-brand-cream/40 uppercase">
               Punti chiave
             </h4>
             {#if notes.summary.key_points.length > 0}
@@ -208,7 +208,7 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
             {/if}
           </div>
           <div>
-            <h4 class="m-0 mb-1 text-[0.7rem] font-semibold tracking-wider text-brand-cream/40 uppercase">
+            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-brand-cream/40 uppercase">
               Azioni
             </h4>
             {#if notes.summary.actions.length > 0}
@@ -220,7 +220,7 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
             {/if}
           </div>
           <div>
-            <h4 class="m-0 mb-1 text-[0.7rem] font-semibold tracking-wider text-brand-cream/40 uppercase">
+            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-brand-cream/40 uppercase">
               Domande aperte
             </h4>
             {#if notes.summary.open_questions.length > 0}

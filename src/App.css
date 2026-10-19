@@ -25,6 +25,12 @@
   --radius-lg: 0.625rem;
   --radius-xl: 0.875rem;
   --radius-2xl: 1.125rem;
+
+  /* Scala tipografica UI: 2xs (micro-label, badge, duration mono), xs (testo
+     secondario, stati, hint), sm (titoli di riga e bottoni). I gradini sopra
+     (base, 2xl) sono riservati a REC e al timer. Niente valori letterali nel
+     markup: un nuovo testo prende il gradino più piccolo che resta leggibile. */
+  --text-2xs: 0.7rem;
 }
 
 @layer base {

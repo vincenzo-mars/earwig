@@ -59,12 +59,12 @@ async function handleRetry(entry: RecordingEntry) {
           <span class="text-sm font-semibold text-brand-cream">{entry.name}</span>
           <span class="flex items-center gap-2">
             {#if entry.transcript?.transcription_ms != null}
-              <span class="whitespace-nowrap font-mono text-[0.7rem] text-brand-cream/40">
+              <span class="whitespace-nowrap font-mono text-2xs text-brand-cream/40">
                 {formatElapsed(entry.transcript.transcription_ms)}
               </span>
             {/if}
             <span
-              class={`whitespace-nowrap rounded-full px-2 py-0.5 text-[0.7rem] font-semibold ${status.className}`}
+              class={`whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-semibold ${status.className}`}
             >
               {status.label}
             </span>
