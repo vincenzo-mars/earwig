@@ -55,7 +55,7 @@ pub struct SttSettings {
 fn app_data_dir(app: &AppHandle) -> PathBuf {
     app.path()
         .app_data_dir()
-        .unwrap_or_else(|_| std::env::temp_dir().join("heedm"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("earwig"))
 }
 
 fn settings_path(app: &AppHandle) -> PathBuf {
@@ -89,7 +89,7 @@ pub(crate) fn local_model_path(app: &AppHandle, settings: &SttSettings) -> PathB
         .join("ggml-large-v3-turbo.bin")
 }
 
-/// Percorso del GGUF scelto dall'utente, scaricato da heedm stesso (vedi
+/// Percorso del GGUF scelto dall'utente, scaricato da earwig stesso (vedi
 /// `llm::download_llm_model`) invece che dal downloader nativo di
 /// llama-server: la sua barra di progresso è gated su `isatty(stdout)` nel
 /// sorgente di llama.cpp e non produce nulla sotto `Stdio::piped()` (vedi
@@ -114,7 +114,7 @@ pub(crate) fn llm_model_path(app: &AppHandle, settings: &SttSettings) -> Option<
 /// layout hash-based `models--org--repo/blobs/...`), da quando il download
 /// era delegato a `--hf-repo`/`--hf-file`. Non più scritta: resta solo perché
 /// `clear_llm_cache` deve poter ripulire quella di chi ha già scaricato un
-/// modello con una versione precedente di heedm (vedi DEVLOG).
+/// modello con una versione precedente di earwig (vedi DEVLOG).
 pub(crate) fn llm_cache_dir(app: &AppHandle, settings: &SttSettings) -> PathBuf {
     model_dir(app, settings).join("llm-cache")
 }
@@ -123,7 +123,7 @@ fn default_recordings_dir(app: &AppHandle) -> PathBuf {
     app.path()
         .document_dir()
         .unwrap_or_else(|_| app_data_dir(app))
-        .join("Heedm")
+        .join("Earwig")
         .join("Records")
 }
 

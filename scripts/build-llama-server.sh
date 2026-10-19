@@ -5,7 +5,7 @@
 #
 # Statico (BUILD_SHARED_LIBS=OFF) e con Metal (GGML_METAL=ON): nessuna dylib esterna
 # da bundlare, accelerazione GPU su Apple Silicon e Intel. Web UI esclusa
-# (LLAMA_BUILD_UI=OFF/LLAMA_USE_PREBUILT_UI=OFF): heedm non la usa, evita che la
+# (LLAMA_BUILD_UI=OFF/LLAMA_USE_PREBUILT_UI=OFF): earwig non la usa, evita che la
 # build scarichi asset o dipenda da npm.
 #
 # LLAMA_BUILD_LIBRESSL=ON: senza un backend TLS il binario compila ma fallisce

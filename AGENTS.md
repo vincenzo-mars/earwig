@@ -1,8 +1,8 @@
-# Heedm — istruzioni di progetto
+# Earwig — istruzioni di progetto
 
 ## Progetto
 
-**Heedm** è un'app desktop macOS per registrare audio (microfono + sistema) e trascriverlo localmente con whisper.cpp.
+**Earwig** è un'app desktop macOS per registrare audio (microfono + sistema) e trascriverlo localmente con whisper.cpp.
 
 - Stack: Tauri v2 + Svelte 5 + TypeScript + Vite
 - Backend: Rust (src-tauri/)
@@ -74,22 +74,22 @@ docs/
 - Lint/format: `npm run lint:fix` (biome)
 - Typecheck FE: `npm run typecheck`
 - Test Rust: `source ~/.cargo/env && cargo test --manifest-path src-tauri/Cargo.toml` — oggi non linka su questo setup (vedi Gotchas macOS): la verifica reale è `cargo check`
-- Avvio app, screenshot, whisper-server, smoke test STT: skill `run-heedm`
+- Avvio app, screenshot, whisper-server, smoke test STT: skill `run-earwig`
 - Test da utente nuovo (wipe totale + build release + install in /Applications): skill `fresh-install` (`bash scripts/fresh-install.sh`). DISTRUTTIVO: cancella modello, impostazioni, permessi OS e registrazioni
 
 ## Commit
 
-Estende le regole globali (skill `/commit`), non le ripete. Specifico di heedm:
+Estende le regole globali (skill `/commit`), non le ripete. Specifico di earwig:
 
 - Il pre-commit hook esegue `biome check --staged`: lancia `npm run lint:fix` PRIMA di `git commit`, non dopo il fallimento
 - Un commit che tocca `src/` o `src-tauri/` deve includere il doc corrispondente (vedi Regola documentazione): il pre-commit hook git `githooks/pre-commit` lo impone, bypass `SKIP_DOCS=1` (per clone, una volta: `git config core.hooksPath githooks`)
 
 ## Verifica (OBBLIGATORIA come i doc)
 
-- Una feature che tocca recording/STT non è finita finché lo smoke test record→transcribe non passa (skill `run-heedm`)
+- Una feature che tocca recording/STT non è finita finché lo smoke test record→transcribe non passa (skill `run-earwig`)
 - Una modifica a onboarding, permessi OS o download del modello va verificata da stato vergine (skill `fresh-install`): i permessi concessi in `tauri dev` appartengono a un'identità diversa da quella dell'app installata, quindi in dev quel flusso non lo vedi
 - Stesso motivo per qualsiasi fetch diretta dal webview verso un server locale (es. AI SDK → llama-server via `@tauri-apps/plugin-http`): l'App Transport Security di macOS può comportarsi diversamente in un'app firmata/notarizzata installata rispetto a `tauri dev` — verificare con `fresh-install`, non assumere che funzioni perché va in dev
-- Modifiche UI: verifica con screenshot reale (skill `run-heedm`), non dichiarare "fatto" senza aver visto il render
+- Modifiche UI: verifica con screenshot reale (skill `run-earwig`), non dichiarare "fatto" senza aver visto il render
 
 ## Gotchas macOS
 

@@ -123,7 +123,7 @@ pub async fn start_llm_server(app: AppHandle) -> Result<(), String> {
             "--port",
             &LLM_PORT.to_string(),
             "--alias",
-            "heedm-llm",
+            "earwig-llm",
             "--ctx-size",
             "16384",
             "--threads",
@@ -206,7 +206,7 @@ pub async fn set_llm_model(
     save_stt_settings(app, settings).await
 }
 
-/// Cancella sia i modelli scaricati da heedm stesso (`llm-models/`) sia la
+/// Cancella sia i modelli scaricati da earwig stesso (`llm-models/`) sia la
 /// vecchia cache nativa di llama-server (`llm-cache/`, layout hash-based) per
 /// chi aveva già scaricato un modello con una versione precedente
 /// dell'app: nessuna migrazione automatica, solo pulizia su richiesta

@@ -44,12 +44,12 @@ async function startDownload() {
 >
   <img
     src="/icon.png"
-    alt="Heedm"
+    alt="Earwig"
     class="h-20 w-20 rounded-2xl shadow-pop"
   />
 
   <div class="flex flex-col gap-2">
-    <h1 class="m-0 text-2xl font-bold text-ink-primary">Benvenuto in Heedm</h1>
+    <h1 class="m-0 text-2xl font-bold text-ink-primary">Benvenuto in Earwig</h1>
     <p class="m-0 max-w-100 text-sm leading-relaxed text-ink-secondary">
       Per trascrivere le tue registrazioni serve un modello vocale che gira
       interamente sul tuo Mac, senza inviare nulla a server esterni.

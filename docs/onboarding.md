@@ -69,7 +69,7 @@ i file, puoi passare alla successiva.
 | File | Perché |
 |---|---|
 | `commands/llm.rs` (lifecycle) | Perché qui serve `/health` e non basta la porta aperta, e perché `start_llm_server` non aspetta |
-| `commands/llm.rs` (ricerca HF, download) | Proxy verso Hugging Face lato Rust, e perché il download lo fa heedm invece di llama-server |
+| `commands/llm.rs` (ricerca HF, download) | Proxy verso Hugging Face lato Rust, e perché il download lo fa earwig invece di llama-server |
 | `commands/llm.rs` (note) | Il sidecar `notes.json`: whole-document replace, un solo scrittore |
 | `src/lib/llm.ts` | L'unico file che conosce l'AI SDK: provider locale, fetch via plugin-http, prompt, `parseSummary` tollerante |
 | `src/lib/TranscriptNotes.svelte` | L'orchestrazione: streaming, `AbortController`, quando si persiste e quando no |
@@ -99,5 +99,5 @@ Da tenere presente mentre leggi, perché la documentazione più vecchia mente in
 qualche punto:
 
 - La mappa moduli in `AGENTS.md` cita `recorder/diarization.rs`: non esiste più, la diarizzazione è delegata a whisper (vedi `DEVLOG.md`, 2026-07-31). Non elenca nemmeno `Onboarding.svelte` e `lib/utils.ts`.
-- `README.md` è fermo a prima dell'onboarding e dell'LLM: indica `~/Movies/Heedm` come cartella registrazioni (oggi è `~/Documents/Heedm/Records`) e descrive una trascrizione manuale che oggi parte da sola dopo lo stop.
+- `README.md` è fermo a prima dell'onboarding e dell'LLM: indica `~/Movies/Earwig` come cartella registrazioni (oggi è `~/Documents/Earwig/Records`) e descrive una trascrizione manuale che oggi parte da sola dopo lo stop.
 - `delete_recording_notes` è registrato in `lib.rs` ma non è invocato da nessun punto del frontend.

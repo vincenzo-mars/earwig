@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Porta il Mac allo stato di un utente che installa Heedm per la prima volta:
+# Porta il Mac allo stato di un utente che installa Earwig per la prima volta:
 # azzera ogni traccia dell'app (impostazioni, modello, cache, webview, permessi
 # OS, registrazioni), compila il bundle release, lo installa in /Applications e
 # lo lancia.
@@ -7,17 +7,17 @@
 # Uso: bash scripts/fresh-install.sh
 #
 # DISTRUTTIVO: cancella il modello Whisper (~1.5 GB, va riscaricato dall'app) e
-# TUTTE le registrazioni in ~/Documents/Heedm/Records.
+# TUTTE le registrazioni in ~/Documents/Earwig/Records.
 #
 # Richiede: Rust (~/.cargo), Node, e src-tauri/binaries/whisper-server già
 # compilato (se manca: bash scripts/build-whisper-server.sh).
 
 set -euo pipefail
 
-IDENTIFIER="com.vincenzomars.heedm"
-APP_NAME="Heedm"
+IDENTIFIER="com.vincenzomars.earwig"
+APP_NAME="Earwig"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RECORDS_DIR="$HOME/Documents/Heedm/Records"
+RECORDS_DIR="$HOME/Documents/Earwig/Records"
 INSTALLED_APP="/Applications/$APP_NAME.app"
 BUILT_APP="$ROOT_DIR/src-tauri/target/release/bundle/macos/$APP_NAME.app"
 
@@ -154,7 +154,7 @@ cat <<'CHECKLIST'
     6. Registra qualcosa con l'audio di sistema attivo, poi verifica che la
        trascrizione mostri sia YOU sia THEM
     7. Controlla che il WAV prodotto sia stereo:
-       afinfo ~/Documents/Heedm/Records/*/recording.wav | grep "Data format"
+       afinfo ~/Documents/Earwig/Records/*/recording.wav | grep "Data format"
        deve dire 2 ch quando c'era audio di sistema
     8. Quit dell'app → nessun whisper-server deve restare vivo:
        lsof -nP -iTCP:8080 -sTCP:LISTEN

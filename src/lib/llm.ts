@@ -10,14 +10,14 @@ import {
 } from "./types";
 
 const LLM_BASE_URL = "http://127.0.0.1:8081/v1";
-const LLM_MODEL_ID = "heedm-llm";
+const LLM_MODEL_ID = "earwig-llm";
 
 // `fetch` gira lato Rust via @tauri-apps/plugin-http invece della fetch nativa
 // del webview: l'App Transport Security di macOS può bloccare richieste HTTP
 // semplici da un'app pacchettizzata anche verso 127.0.0.1 (vedi tauri-apps/
-// tauri#4722), e heedm non aveva finora nessuna eccezione ATS configurata.
+// tauri#4722), e earwig non aveva finora nessuna eccezione ATS configurata.
 const provider = createOpenAICompatible({
-  name: "heedm-llm",
+  name: "earwig-llm",
   baseURL: LLM_BASE_URL,
   fetch: tauriFetch as unknown as typeof fetch,
 });

@@ -349,8 +349,8 @@ mod tests {
         // Path unici per formato: i test girano in parallelo e condividere la
         // fixture aiff causava collisioni di scrittura (afconvert errore -54).
         let dir = std::env::temp_dir();
-        let aiff = dir.join(format!("heedm_decode_fix_{ext}.aiff"));
-        let out = dir.join(format!("heedm_decode_fix.{ext}"));
+        let aiff = dir.join(format!("earwig_decode_fix_{ext}.aiff"));
+        let out = dir.join(format!("earwig_decode_fix.{ext}"));
         Command::new("say")
             .args(["-v", "Alice", "-o"])
             .arg(&aiff)

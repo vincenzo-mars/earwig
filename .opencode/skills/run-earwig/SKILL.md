@@ -1,7 +1,7 @@
 ---
-name: run-heedm
+name: run-earwig
 description: >
-  Launch, drive, and verify the heedm app: dev run, screenshot for UI
+  Launch, drive, and verify the earwig app: dev run, screenshot for UI
   verification, whisper-server and llama-server lifecycle (start/health/kill/
   orphans), the record→transcribe STT smoke test, and the local LLM chat
   completions smoke test. Use when asked to run/avvia the app, screenshot the
@@ -34,7 +34,7 @@ the log shows the Vite server + app window opens.
 ## Screenshot verification
 
 ```sh
-screencapture -x /tmp/heedm-shot.png
+screencapture -x /tmp/earwig-shot.png
 ```
 
 Then Read the PNG. Full-screen capture — no window ID needed, no assistive
@@ -52,7 +52,7 @@ curl -s http://127.0.0.1:8080/health   # server alive?
 pkill -f whisper-server                # kill orphans (check lsof again after)
 # manual start (default model dir):
 src-tauri/binaries/whisper-server \
-  --model "$HOME/Library/Application Support/com.vincenzomars.heedm/models/ggml-large-v3-turbo.bin" \
+  --model "$HOME/Library/Application Support/com.vincenzomars.earwig/models/ggml-large-v3-turbo.bin" \
   --host 127.0.0.1 --port 8080
 ```
 
@@ -66,10 +66,10 @@ Run this before declaring any recorder/STT feature done. Generates a spoken
 fixture with native tools — no stored fixture file:
 
 ```sh
-say -v Alice -o /tmp/heedm-fix.aiff "questa è una prova di trascrizione"
-afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/heedm-fix.aiff /tmp/heedm-fix.wav
+say -v Alice -o /tmp/earwig-fix.aiff "questa è una prova di trascrizione"
+afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/earwig-fix.aiff /tmp/earwig-fix.wav
 curl -s http://127.0.0.1:8080/inference \
-  -F file=@/tmp/heedm-fix.wav -F language=it -F response_format=verbose_json \
+  -F file=@/tmp/earwig-fix.wav -F language=it -F response_format=verbose_json \
   | jq -e '.text | length > 0'
 ```
 
@@ -86,7 +86,7 @@ the produced WAV the same way.
 ## llama-server lifecycle (local LLM: summary + chat)
 
 Independent process/port from whisper-server (8081 vs 8080) — starting/stopping
-one never touches the other. Model download is handled by heedm itself
+one never touches the other. Model download is handled by earwig itself
 (`download_llm_model`, plain `reqwest` streamed to `<model_dir>/llm-models/`),
 **not** by llama-server's own `--hf-repo`/`--hf-file` downloader: its progress
 bar is gated on `isatty(stdout)` in llama.cpp's `common/download.cpp` and
@@ -103,7 +103,7 @@ pkill -f llama-server                  # kill orphans (check lsof again after)
 # manual start (pass the path of an already-downloaded GGUF):
 src-tauri/binaries/llama-server \
   --model ~/Library/Application\ Support/<bundle-id>/llm-models/<org>--<repo>/<file>.gguf \
-  --host 127.0.0.1 --port 8081 --alias heedm-llm --ctx-size 16384 --no-webui
+  --host 127.0.0.1 --port 8081 --alias earwig-llm --ctx-size 16384 --no-webui
 ```
 
 ## Chat completions smoke test
@@ -114,7 +114,7 @@ STT smoke test above:
 ```sh
 curl -s http://127.0.0.1:8081/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"heedm-llm","messages":[{"role":"user","content":"Rispondi solo con: ok"}],"stream":true}'
+  -d '{"model":"earwig-llm","messages":[{"role":"user","content":"Rispondi solo con: ok"}],"stream":true}'
 ```
 
 Pass = a stream of `data: {...}` SSE chunks with `choices[0].delta.content`,

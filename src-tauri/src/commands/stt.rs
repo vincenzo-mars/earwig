@@ -192,7 +192,7 @@ async fn run_transcription(path: &str) -> Result<TranscriptResult, String> {
     let base_url = format!("http://127.0.0.1:{STT_PORT}");
     let started = std::time::Instant::now();
 
-    // I file prodotti da Heedm sono già nel formato che whisper.cpp richiede
+    // I file prodotti da Earwig sono già nel formato che whisper.cpp richiede
     // (16kHz 16-bit PCM), quindi vanno inviati così come sono. In streaming
     // dal file, non caricati in memoria: un'ora di stereo sono ~230MB che non
     // hanno motivo di stare in RAM durante l'upload.

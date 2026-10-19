@@ -1,12 +1,12 @@
 [package]
-name = "heedm"
+name = "earwig"
 version = "0.1.0"
-description = "heedm audio recorder"
+description = "earwig audio recorder"
 authors = ["Vincenzo Mars"]
 edition = "2021"
 
 [lib]
-name = "heedm_lib"
+name = "earwig_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

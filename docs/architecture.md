@@ -160,11 +160,11 @@ Un server sopravvissuto a una morte violenta tiene la porta, e senza altre infor
 
 Sui tre punti in cui la porta è occupata ma lo slot `Child` è vuoto:
 
-- **avvio** (`try_adopt_running_server`): lock valido e modello atteso → si **adotta** il processo così com'è, senza ricaricare il modello; lock valido ma modello diverso → si termina e si rispawna; nessun lock valido → si usa comunque quello che risponde sulla porta, come l'app ha sempre fatto (è il flusso di chi avvia un server a mano per debug, vedi la skill `run-heedm`), e sarà lo stop a rifiutarsi di terminarlo
+- **avvio** (`try_adopt_running_server`): lock valido e modello atteso → si **adotta** il processo così com'è, senza ricaricare il modello; lock valido ma modello diverso → si termina e si rispawna; nessun lock valido → si usa comunque quello che risponde sulla porta, come l'app ha sempre fatto (è il flusso di chi avvia un server a mano per debug, vedi la skill `run-earwig`), e sarà lo stop a rifiutarsi di terminarlo
 - **stop** (`stop_tracked_server`): lock valido → SIGKILL per pid e attesa del rilascio della porta; altrimenti l'errore di sempre, che chiede di chiudere il processo a mano
 - **chiusura dell'app** (`kill_tracked`): stesso trattamento. Senza questo ramo un processo adottato non verrebbe mai terminato e verrebbe riadottato a ogni sessione, all'infinito
 
-Due limiti accettati: `ps -o lstart=` formatta la data secondo il locale, quindi un cambio di locale fra due sessioni fa fallire il confronto e l'app non adotta (degrada verso la prudenza, mai verso il kill sbagliato); e due istanze di heedm in parallelo condividono il lockfile, con la seconda che adotterebbe il server della prima.
+Due limiti accettati: `ps -o lstart=` formatta la data secondo il locale, quindi un cambio di locale fra due sessioni fa fallire il confronto e l'app non adotta (degrada verso la prudenza, mai verso il kill sbagliato); e due istanze di earwig in parallelo condividono il lockfile, con la seconda che adotterebbe il server della prima.
 
 `WhisperServerState` tiene l'unico handle al processo. `start_local_server`:
 
@@ -181,7 +181,7 @@ In `lib.rs` l'app è costruita con `.build()` invece di `.run()` diretto, così 
 
 ### Trascrizione
 
-`transcribe_recording` invia il WAV in multipart a `POST /inference` con `language=it`, `response_format=verbose_json` e `diarize=true`, in streaming dal file (`Part::stream`, mai caricato per intero in RAM). Il file **non** viene convertito: quello che Heedm produce è già mono/stereo 16kHz 16-bit PCM, cioè esattamente ciò che `read_wav` accetta.
+`transcribe_recording` invia il WAV in multipart a `POST /inference` con `language=it`, `response_format=verbose_json` e `diarize=true`, in streaming dal file (`Part::stream`, mai caricato per intero in RAM). Il file **non** viene convertito: quello che Earwig produce è già mono/stereo 16kHz 16-bit PCM, cioè esattamente ciò che `read_wav` accetta.
 
 Il risultato viene arricchito con `transcription_ms` (misurato lato client, non presente nella risposta del server) e scritto come `transcript.json` accanto al WAV.
 
@@ -211,15 +211,15 @@ Per ogni registrazione trascritta, un riassunto/appunti generato una volta e per
 
 ### Perché non `@ai-sdk/svelte`
 
-La classe `Chat` del binding Svelte di Vercel AI SDK richiede un backend HTTP proprio che esegua `streamText()` e restituisca il protocollo "UI Message Stream" — non può puntare direttamente a un provider. Heedm non ha un server JS a runtime (frontend Vite/Svelte puro in webview + backend Rust), quindi non c'è dove far girare quel backend. Si usano invece le funzioni **core** di `ai` (`streamText`) direttamente nel frontend (`src/lib/llm.ts`), col provider `@ai-sdk/openai-compatible` puntato su `http://127.0.0.1:8081/v1`, l'endpoint OpenAI-compatible nativo di `llama-server`.
+La classe `Chat` del binding Svelte di Vercel AI SDK richiede un backend HTTP proprio che esegua `streamText()` e restituisca il protocollo "UI Message Stream" — non può puntare direttamente a un provider. Earwig non ha un server JS a runtime (frontend Vite/Svelte puro in webview + backend Rust), quindi non c'è dove far girare quel backend. Si usano invece le funzioni **core** di `ai` (`streamText`) direttamente nel frontend (`src/lib/llm.ts`), col provider `@ai-sdk/openai-compatible` puntato su `http://127.0.0.1:8081/v1`, l'endpoint OpenAI-compatible nativo di `llama-server`.
 
 ### Fetch via `@tauri-apps/plugin-http`, non fetch nativa del webview
 
-`createOpenAICompatible` riceve un `fetch` custom da `@tauri-apps/plugin-http` invece della fetch nativa del browser. Motivo: l'App Transport Security di macOS può bloccare richieste HTTP semplici da un'app pacchettizzata anche verso `127.0.0.1` ([tauri-apps/tauri#4722](https://github.com/tauri-apps/tauri/issues/4722)), e finora heedm non aveva mai fatto una fetch diretta dal webview verso un server locale (tutto l'HTTP esistente, whisper compreso, passa da Rust via `reqwest`) — nessuna eccezione ATS era mai stata necessaria in `Info.plist`. Il plugin esegue la richiesta lato Rust (nessun caricamento di risorsa nel webview, quindi ATS/CORS non si applicano). Capability scoped a `http://127.0.0.1:8081/*` in `capabilities/default.json`, principio del minimo privilegio.
+`createOpenAICompatible` riceve un `fetch` custom da `@tauri-apps/plugin-http` invece della fetch nativa del browser. Motivo: l'App Transport Security di macOS può bloccare richieste HTTP semplici da un'app pacchettizzata anche verso `127.0.0.1` ([tauri-apps/tauri#4722](https://github.com/tauri-apps/tauri/issues/4722)), e finora earwig non aveva mai fatto una fetch diretta dal webview verso un server locale (tutto l'HTTP esistente, whisper compreso, passa da Rust via `reqwest`) — nessuna eccezione ATS era mai stata necessaria in `Info.plist`. Il plugin esegue la richiesta lato Rust (nessun caricamento di risorsa nel webview, quindi ATS/CORS non si applicano). Capability scoped a `http://127.0.0.1:8081/*` in `capabilities/default.json`, principio del minimo privilegio.
 
-### Binario e modello: `llama-server` con `--model`, download fatto da heedm
+### Binario e modello: `llama-server` con `--model`, download fatto da earwig
 
-`llama-server` (llama.cpp, stessa org `ggml-org` di whisper.cpp) è compilato da `scripts/build-llama-server.sh`, calco di `build-whisper-server.sh` (binario universale macOS, statico, Metal attivo), con `-DLLAMA_BUILD_UI=OFF`/`-DLLAMA_USE_PREBUILT_UI=OFF` per non bundlare né costruire la web UI (heedm non la usa).
+`llama-server` (llama.cpp, stessa org `ggml-org` di whisper.cpp) è compilato da `scripts/build-llama-server.sh`, calco di `build-whisper-server.sh` (binario universale macOS, statico, Metal attivo), con `-DLLAMA_BUILD_UI=OFF`/`-DLLAMA_USE_PREBUILT_UI=OFF` per non bundlare né costruire la web UI (earwig non la usa).
 
 **`-DLLAMA_BUILD_LIBRESSL=ON` è obbligatorio**, non opzionale: senza un backend TLS il binario compila comunque (nessun errore in fase di build) ma fallisce a runtime con `"HTTPS is not supported"` su qualunque richiesta HTTPS — verificato empiricamente in fase di implementazione, non assunto dalla documentazione. `llama.cpp` non usa più `libcurl`: linka OpenSSL/BoringSSL/LibreSSL direttamente. LibreSSL vendorizzata dal build stesso (nessuna libreria di sistema da installare sulla macchina di sviluppo) è l'unica delle tre opzioni coerente col resto dello script: self-contained, nessuna dylib esterna.
 
@@ -227,7 +227,7 @@ A differenza di quanto ci si aspetterebbe, **il modello non viene scaricato da `
 
 `download_llm_model` (`commands/llm.rs`, via l'helper condiviso `commands/download.rs`) scarica quindi il GGUF da sé via `reqwest`, stesso identico pattern di `download_local_model` per whisper: stream diretto da `https://huggingface.co/<repo>/resolve/main/<file>`, scrittura su `.part`, evento di progresso (`llm-download-progress`) a ogni cambio di percentuale intera (non per chunk: sarebbero decine di migliaia di eventi IPC su un file da GB), rename atomico a fine stream. Il file finisce in `<model_dir>/llm-models/<org>--<repo>/<file>.gguf` (slash sanitizzato in `--`, nessun hash: percorso ispezionabile a mano). `start_llm_server` passa quel percorso a `llama-server` con `--model <path>`, non più `--hf-repo`/`--hf-file`, e fallisce subito se il file non esiste ancora sul disco. Il repo/file/size scelti dall'utente sono persistiti in `SttSettings.llm_hf_repo`/`llm_hf_file`/`llm_size_bytes`; `llm_ready` è ricalcolato da `get_stt_settings` verificando l'esistenza del file, esattamente come `local_ready` per whisper — mai la fonte di verità è il valore persistito.
 
-Chi ha scaricato un modello con una versione precedente di heedm (quella con `--hf-repo`/`--hf-file`) ha la vecchia cache in `<model_dir>/llm-cache/` (layout hash-based sopra): non viene migrata automaticamente, resta finché l'utente preme "Elimina modelli scaricati" in Settings (`clear_llm_cache`, cancella entrambe le cartelle).
+Chi ha scaricato un modello con una versione precedente di earwig (quella con `--hf-repo`/`--hf-file`) ha la vecchia cache in `<model_dir>/llm-cache/` (layout hash-based sopra): non viene migrata automaticamente, resta finché l'utente preme "Elimina modelli scaricati" in Settings (`clear_llm_cache`, cancella entrambe le cartelle).
 
 ### Ricerca modelli: proxy Rust verso l'API di Hugging Face
 
@@ -259,9 +259,9 @@ Il download/scelta del modello LLM è opzionale e lazy: `Onboarding.svelte` rest
 
 - `settings.json` — `SttSettings` serializzato in `app_data_dir/` (`local_ready`/`llm_ready` sono solo l'ultimo valore noto, vedi sopra; `llm_hf_repo`/`llm_hf_file`/`llm_size_bytes` sono il modello LLM scelto, tutti `#[serde(default)]` per non far fallire il parsing di un `settings.json` scritto prima che questi campi esistessero)
 - `app_data_dir/models/ggml-large-v3-turbo.bin` — il modello whisper; `ggml-large-v3-turbo.bin.part` può comparire durante un download, sempre transitorio
-- `app_data_dir/models/llm-models/<org>--<repo>/<file>.gguf` — i modelli LLM scaricati da heedm stesso (`download_llm_model`); `.gguf.part` durante un download, sempre transitorio
+- `app_data_dir/models/llm-models/<org>--<repo>/<file>.gguf` — i modelli LLM scaricati da earwig stesso (`download_llm_model`); `.gguf.part` durante un download, sempre transitorio
 - `app_data_dir/models/llm-cache/` — vecchia cache nativa di `llama-server` (`LLAMA_CACHE`, layout hash-based), non più scritta ma non migrata automaticamente: resta finché l'utente non preme "Elimina modelli scaricati"
-- `~/Documents/Heedm/Records/<timestamp>/` — `recording.wav` + `transcript.json` (successo) oppure `transcript_error.json` (ultimo tentativo fallito, rimosso al primo rilancio riuscito) + `notes.json` (riassunto/chat, opzionale)
+- `~/Documents/Earwig/Records/<timestamp>/` — `recording.wav` + `transcript.json` (successo) oppure `transcript_error.json` (ultimo tentativo fallito, rimosso al primo rilancio riuscito) + `notes.json` (riassunto/chat, opzionale)
 
 ## Dipendenze chiave
 

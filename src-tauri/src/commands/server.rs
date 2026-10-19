@@ -223,7 +223,7 @@ const PORT_RELEASE_TIMEOUT_SECS: u64 = 5;
 
 /// Ferma il processo tracciato in `slot`, se presente. Non termina mai un
 /// processo per porta: se lo slot è vuoto ma la porta è occupata, è un
-/// processo che Heedm non ha avviato e va lasciato stare.
+/// processo che Earwig non ha avviato e va lasciato stare.
 pub(crate) async fn stop_tracked_server(
     slot: &Mutex<Option<tokio::process::Child>>,
     port: u16,
@@ -264,7 +264,7 @@ pub(crate) async fn stop_tracked_server(
                 Some(lock) => kill_pid(lock.pid),
                 None => {
                     return Err(format!(
-                        "La porta {port} è occupata da un processo che Heedm non ha avviato: chiudilo manualmente prima di riprovare"
+                        "La porta {port} è occupata da un processo che Earwig non ha avviato: chiudilo manualmente prima di riprovare"
                     ))
                 }
             }
@@ -297,7 +297,7 @@ async fn wait_for_port_release(port: u16) -> Result<(), String> {
 ///
 /// Il caso "processo non nostro" resta permissivo com'è sempre stato: l'app usa
 /// quello che risponde sulla porta (è il flusso di chi avvia un server a mano
-/// per debug, vedi la skill `run-heedm`), e sarà `stop_tracked_server` a
+/// per debug, vedi la skill `run-earwig`), e sarà `stop_tracked_server` a
 /// rifiutarsi di terminarlo. Il lock aggiunge solo i due casi che prima non si
 /// potevano distinguere: un nostro orfano da riusare, e un nostro orfano che ha
 /// in RAM il modello sbagliato e va sostituito.

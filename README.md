@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/icon.png" width="128" alt="Heedm icon" />
+  <img src="public/icon.png" width="128" alt="Earwig icon" />
 </p>
 
-<h1 align="center">Heedm</h1>
+<h1 align="center">Earwig</h1>
 
 <p align="center">
   App desktop macOS per registrare audio (microfono + sistema) e trascriverlo <b>localmente</b> con whisper.cpp — nessun cloud, nessun account, nessun Docker.
@@ -27,11 +27,11 @@
 
 ### 1. Primo avvio — setup
 
-All'apertura, Heedm chiede i permessi di **microfono** e **registrazione schermo**. Se non li hai ancora concessi, apri ⚙️ **Impostazioni → Permessi** e segui le CTA per raggiungere il pannello di sistema giusto.
+All'apertura, Earwig chiede i permessi di **microfono** e **registrazione schermo**. Se non li hai ancora concessi, apri ⚙️ **Impostazioni → Permessi** e segui le CTA per raggiungere il pannello di sistema giusto.
 
 Sempre da ⚙️ **Impostazioni**, scarica il modello Whisper (pulsante di download, mostra progresso). Il binario `whisper-server` è già incluso nell'app — non serve installare nulla a parte il modello.
 
-Puoi anche scegliere dove salvare **modello** e **registrazioni** (di default: cartella dati dell'app / `~/Movies/Heedm` rispettivamente).
+Puoi anche scegliere dove salvare **modello** e **registrazioni** (di default: cartella dati dell'app / `~/Movies/Earwig` rispettivamente).
 
 ### 2. Registrare
 
@@ -41,7 +41,7 @@ Puoi anche scegliere dove salvare **modello** e **registrazioni** (di default: c
 ### 3. Trascrivere
 
 - Apri una registrazione dalla lista e premi **Trascrivi**
-- Heedm avvia (se non già attivo) il server whisper-server locale e invia l'audio per la trascrizione
+- Earwig avvia (se non già attivo) il server whisper-server locale e invia l'audio per la trascrizione
 - Il risultato appare raggruppato per chi parla: **Tu** (mic), **Sistema**, **Sovrapposti** — quando è stato possibile distinguerli
 
 > La diarizzazione è "a 2 vie": distingue mic da audio di sistema, non le singole persone all'interno di ciascuna sorgente (es. una call multi-partecipante lato sistema risulta un unico "Sistema").

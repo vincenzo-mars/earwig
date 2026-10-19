@@ -1,4 +1,4 @@
-//! Stato e gestione dei permessi OS richiesti da Heedm (microfono, registrazione
+//! Stato e gestione dei permessi OS richiesti da Earwig (microfono, registrazione
 //! schermo). Vive fuori da `recorder/`: non è cattura audio, è integrazione OS.
 
 #[cfg(target_os = "macos")]
