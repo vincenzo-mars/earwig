@@ -43,7 +43,7 @@ async function handleRecord() {
        server, che galleggia in basso a sinistra. -->
   <div class="flex shrink-0 flex-col items-center gap-4 px-6 pt-10 pb-6 text-center">
     <button
-      class={`h-30 w-30 cursor-pointer rounded-full border-none text-base font-bold text-brand-cream transition-[background,box-shadow,transform] duration-200 active:scale-[0.96] disabled:cursor-default disabled:opacity-50 ${
+      class={`h-30 w-30 cursor-pointer rounded-full border-none text-base font-bold text-ink-primary transition-[background,box-shadow,transform] duration-200 active:scale-[0.96] disabled:cursor-default disabled:opacity-50 ${
         session.isRecording
           ? "animate-[pulse-rec_1.5s_ease-in-out_infinite] bg-rec-strong shadow-[0_4px_16px_rgba(210,52,52,0.4)]"
           : "bg-rec shadow-[0_4px_16px_rgba(171,43,41,0.4)] hover:bg-rec-strong"
@@ -58,7 +58,7 @@ async function handleRecord() {
 
     {#if !session.isRecording}
       <button
-        class="cursor-pointer border-none bg-transparent text-xs text-brand-cream/45 transition-colors hover:text-brand-cream/75 hover:underline underline-offset-4 disabled:cursor-default disabled:opacity-50"
+        class="cursor-pointer border-none bg-transparent text-xs text-ink-faint transition-colors hover:text-ink-secondary hover:underline underline-offset-4 disabled:cursor-default disabled:opacity-50"
         onclick={handleImport}
         disabled={session.isTranscribing || !session.canRecord}
         title={!session.canRecord ? session.recordGateReason : undefined}
@@ -68,7 +68,7 @@ async function handleRecord() {
     {/if}
 
     {#if !session.isRecording && !session.canRecord}
-      <p class="m-0 max-w-95 text-xs text-brand-cream/50">{session.recordGateReason}</p>
+      <p class="m-0 max-w-95 text-xs text-ink-muted">{session.recordGateReason}</p>
     {/if}
     {#if session.isRecording}
       <p class="m-0 font-mono text-2xl font-semibold text-rec-strong">
@@ -76,7 +76,7 @@ async function handleRecord() {
       </p>
     {/if}
     {#if session.isTranscribing}
-      <p class="m-0 animate-pulse text-xs text-brand-cream/50">
+      <p class="m-0 animate-pulse text-xs text-ink-muted">
         Trascrizione in corso... <span class="font-mono">{formatElapsed(session.transcribeMs)}</span>
       </p>
     {/if}
@@ -88,7 +88,7 @@ async function handleRecord() {
   <div class="flex flex-1 flex-col gap-3 overflow-y-auto px-6 pb-18">
     <div class="mx-auto flex w-full max-w-200 flex-col gap-3">
       <h2
-        class="m-0 text-2xs font-semibold uppercase tracking-[0.12em] text-brand-cream/40"
+        class="m-0 text-2xs font-semibold uppercase tracking-[0.12em] text-ink-faint"
       >
         Registrazioni
       </h2>

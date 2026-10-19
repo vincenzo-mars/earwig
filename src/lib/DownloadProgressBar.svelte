@@ -18,7 +18,7 @@ let {
       style={`width: ${progress.pct}%`}
     ></div>
   </div>
-  <span class="text-xs text-brand-cream/55">
+  <span class="text-xs text-ink-muted">
     {progress.step === "done" ? "Completato" : `Modello ${progress.pct}%`}
   </span>
 </div>

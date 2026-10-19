@@ -19,7 +19,7 @@ const groups = $derived(groupSegments(transcript.segments));
         <span class="font-mono font-normal opacity-60 tabular-nums">{formatSeconds(g.start)}</span>
       </div>
       <div
-        class="rounded-r-lg border-l-[3px] bg-brand-darker px-3 py-2 text-sm leading-relaxed text-brand-cream/90"
+        class="rounded-r-lg border-l-[3px] bg-brand-darker px-3 py-2 text-sm leading-relaxed text-ink-primary"
         style={`border-left-color: ${color}`}
       >
         {g.text}

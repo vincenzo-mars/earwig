@@ -51,7 +51,7 @@ function handleKeydown(e: KeyboardEvent) {
           class={`max-w-[85%] rounded-xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
             message.role === "user"
               ? "self-end bg-brand-light text-brand-ink"
-              : "self-start bg-brand-darker text-brand-cream/90"
+              : "self-start bg-brand-darker text-ink-primary"
           }`}
         >
           {message.content}
@@ -59,7 +59,7 @@ function handleKeydown(e: KeyboardEvent) {
       {/each}
       {#if streamingText}
         <div
-          class="max-w-[85%] self-start rounded-xl bg-brand-darker px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap text-brand-cream/90"
+          class="max-w-[85%] self-start rounded-xl bg-brand-darker px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap text-ink-primary"
         >
           {streamingText}
         </div>
@@ -69,7 +69,7 @@ function handleKeydown(e: KeyboardEvent) {
 
   <div class="flex items-end gap-2">
     <textarea
-      class="min-h-10 flex-1 resize-none rounded-lg border border-brand-cream/15 bg-brand-darker px-3 py-2 text-sm text-brand-cream placeholder:text-brand-cream/40 focus:outline-none disabled:opacity-50"
+      class="min-h-10 flex-1 resize-none rounded-lg border border-brand-cream/15 bg-brand-darker px-3 py-2 text-sm text-ink-primary placeholder:text-ink-faint focus:outline-none disabled:opacity-50"
       rows="1"
       placeholder="Fai una domanda sulla trascrizione..."
       bind:value={draft}

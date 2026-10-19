@@ -26,7 +26,7 @@ let {
     <ArrowLeft size={16} />
   </Button>
   <h2
-    class="m-0 text-xs font-semibold tracking-wider text-brand-cream/50 uppercase"
+    class="m-0 text-xs font-semibold tracking-wider text-ink-muted uppercase"
   >
     {title}
   </h2>

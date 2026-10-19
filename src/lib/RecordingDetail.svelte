@@ -58,7 +58,7 @@ async function handleRetry() {
 
   <div class="flex flex-1 flex-col overflow-y-auto px-6 pt-5 pb-18">
     {#if !entry}
-      <p class="text-sm text-brand-cream/50">
+      <p class="text-sm text-ink-muted">
         {resolving ? "Caricamento..." : "Registrazione non trovata."}
       </p>
     {:else}
@@ -71,7 +71,7 @@ async function handleRetry() {
           {:else if entry.error}
             <p class="m-0 text-sm text-red-400">Trascrizione fallita: {entry.error}</p>
           {:else}
-            <p class="m-0 text-sm text-brand-cream/50">
+            <p class="m-0 text-sm text-ink-muted">
               Trascrizione non ancora disponibile.
             </p>
           {/if}

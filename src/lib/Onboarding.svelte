@@ -49,15 +49,15 @@ async function startDownload() {
   />
 
   <div class="flex flex-col gap-2">
-    <h1 class="m-0 text-2xl font-bold text-brand-cream">Benvenuto in Heedm</h1>
-    <p class="m-0 max-w-100 text-sm leading-relaxed text-brand-cream/70">
+    <h1 class="m-0 text-2xl font-bold text-ink-primary">Benvenuto in Heedm</h1>
+    <p class="m-0 max-w-100 text-sm leading-relaxed text-ink-secondary">
       Per trascrivere le tue registrazioni serve un modello vocale che gira
       interamente sul tuo Mac, senza inviare nulla a server esterni.
     </p>
   </div>
 
   {#if downloaded}
-    <p class="m-0 max-w-100 text-sm leading-relaxed text-brand-cream/80">
+    <p class="m-0 max-w-100 text-sm leading-relaxed text-ink-secondary">
       Modello pronto. Potrai eliminarlo o scaricarlo di nuovo in qualsiasi
       momento dalle impostazioni.
     </p>
@@ -68,7 +68,7 @@ async function startDownload() {
         <DownloadProgressBar progress={dlProgress} trackClass="bg-brand-darker" />
       {/if}
     </div>
-    <p class="m-0 text-xs text-brand-cream/50">
+    <p class="m-0 text-xs text-ink-muted">
       Nel mentre puoi anche prenderti un caffè, ma non uscire dall'app!
     </p>
   {:else}

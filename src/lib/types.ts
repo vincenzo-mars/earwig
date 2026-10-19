@@ -144,8 +144,7 @@ const TRANSCRIPT_STATUS_INFO: Record<
   },
   pending: {
     label: "in attesa",
-    className:
-      "border border-brand-cream/20 bg-transparent text-brand-cream/40",
+    className: "border border-brand-cream/20 bg-transparent text-ink-faint",
   },
   failed: {
     label: "fallito",

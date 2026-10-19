@@ -30,7 +30,7 @@ const STATUS: Record<SttStatus, { label: string; dot: string }> = {
 };
 </script>
 
-<div class="fixed left-4 bottom-4 z-10 flex items-center gap-2 text-xs text-brand-cream/50">
+<div class="fixed left-4 bottom-4 z-10 flex items-center gap-2 text-xs text-ink-muted">
   <span class={`h-2 w-2 shrink-0 rounded-full ${STATUS[status].dot}`}></span>
   {STATUS[status].label}
 </div>

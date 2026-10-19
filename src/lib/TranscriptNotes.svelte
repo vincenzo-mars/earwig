@@ -175,7 +175,7 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
 {#if entry.transcript}
   <div class="flex flex-col gap-4 rounded-xl border border-brand-cream/10 bg-brand-darker px-5 py-4">
     <div class="flex items-center justify-between">
-      <h3 class="m-0 text-xs font-semibold tracking-wider text-brand-cream/50 uppercase">
+      <h3 class="m-0 text-xs font-semibold tracking-wider text-ink-muted uppercase">
         Riassunto e note
       </h3>
       {#if notes.summary}
@@ -190,13 +190,13 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
     </div>
 
     {#if loadingNotes}
-      <p class="m-0 text-sm text-brand-cream/50">Caricamento...</p>
+      <p class="m-0 text-sm text-ink-muted">Caricamento...</p>
     {:else}
       {#if notes.summary}
-        <div class="flex flex-col gap-3 text-sm text-brand-cream/90">
+        <div class="flex flex-col gap-3 text-sm text-ink-primary">
           <p class="m-0 leading-relaxed">{notes.summary.text}</p>
           <div>
-            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-brand-cream/40 uppercase">
+            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-ink-faint uppercase">
               Punti chiave
             </h4>
             {#if notes.summary.key_points.length > 0}
@@ -204,11 +204,11 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
                 {#each notes.summary.key_points as point}<li>{point}</li>{/each}
               </ul>
             {:else}
-              <p class="m-0 text-brand-cream/50">Nessuno.</p>
+              <p class="m-0 text-ink-muted">Nessuno.</p>
             {/if}
           </div>
           <div>
-            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-brand-cream/40 uppercase">
+            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-ink-faint uppercase">
               Azioni
             </h4>
             {#if notes.summary.actions.length > 0}
@@ -216,11 +216,11 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
                 {#each notes.summary.actions as action}<li>{action}</li>{/each}
               </ul>
             {:else}
-              <p class="m-0 text-brand-cream/50">Nessuna azione emersa.</p>
+              <p class="m-0 text-ink-muted">Nessuna azione emersa.</p>
             {/if}
           </div>
           <div>
-            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-brand-cream/40 uppercase">
+            <h4 class="m-0 mb-1 text-2xs font-semibold tracking-wider text-ink-faint uppercase">
               Domande aperte
             </h4>
             {#if notes.summary.open_questions.length > 0}
@@ -228,29 +228,29 @@ let hasContent = $derived(notes.summary != null || notes.messages.length > 0);
                 {#each notes.summary.open_questions as q}<li>{q}</li>{/each}
               </ul>
             {:else}
-              <p class="m-0 text-brand-cream/50">Nessuna.</p>
+              <p class="m-0 text-ink-muted">Nessuna.</p>
             {/if}
           </div>
         </div>
       {:else if summaryBusy}
-        <p class="m-0 whitespace-pre-wrap text-sm text-brand-cream/80">
+        <p class="m-0 whitespace-pre-wrap text-sm text-ink-secondary">
           {streamingText || "Generazione in corso..."}
         </p>
       {:else if llmStatus === "running"}
         <Button onclick={generateSummary}>Genera riassunto e note</Button>
       {:else if llmStatus === "loading"}
-        <p class="m-0 text-sm text-brand-cream/50">
+        <p class="m-0 text-sm text-ink-muted">
           Caricamento modello... può richiedere qualche minuto al primo avvio.
         </p>
       {:else}
         <div class="flex flex-col items-start gap-2">
-          <p class="m-0 text-sm text-brand-cream/50">
+          <p class="m-0 text-sm text-ink-muted">
             {llmReady
               ? "Genera un riassunto e apri una chat sulla trascrizione con un modello locale."
               : "Scarica un modello LLM dalle impostazioni per generare riassunto e chat sulla trascrizione."}
           </p>
           <Button
-            class="disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-brand-cream/70"
+            class="disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-ink-secondary"
             onclick={() => onLlmRefresh({ attemptStart: true })}
             disabled={!llmReady}
             title={llmReady ? undefined : "Scarica prima il modello dalle impostazioni"}

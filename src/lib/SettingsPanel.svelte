@@ -267,10 +267,10 @@ async function startDownload() {
     class="flex flex-col gap-1 rounded-lg border border-brand-cream/10 bg-brand-dark/50 px-2.5 py-2"
   >
     <span
-      class="text-2xs font-semibold tracking-wider text-brand-cream/40 uppercase"
+      class="text-2xs font-semibold tracking-wider text-ink-faint uppercase"
       >{label}</span
     >
-    <p class="m-0 font-mono text-2xs break-all text-brand-cream/70">
+    <p class="m-0 font-mono text-2xs break-all text-ink-secondary">
       {value}
     </p>
   </div>
@@ -285,7 +285,7 @@ async function startDownload() {
 <div class="flex h-full w-full flex-col">
   <PageHeader title="Impostazioni" onBack={close} actions={settings ? actions : undefined} />
 
-  <div class="flex-1 overflow-y-auto px-6 pt-5 pb-18 text-brand-cream">
+  <div class="flex-1 overflow-y-auto px-6 pt-5 pb-18 text-ink-primary">
     {#if settings}
       <!-- Le due colonne (core e LLM) si allargano con la finestra fino a un
            tetto: oltre, si stirerebbero lasciando una voragine in mezzo. Una
@@ -295,7 +295,7 @@ async function startDownload() {
       >
       <div class="flex flex-col gap-5">
         <div class="flex flex-col gap-3">
-          <span class="text-xs font-semibold text-brand-cream"
+          <span class="text-xs font-semibold text-ink-primary"
             >Permessi</span
           >
 
@@ -305,13 +305,13 @@ async function startDownload() {
               class="flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-brand-dark/50 cursor-pointer"
               onclick={() => openPermissionSettings("microphone")}
             >
-              <Mic size={16} class="mt-0.5 shrink-0 text-brand-cream/70" />
+              <Mic size={16} class="mt-0.5 shrink-0 text-ink-secondary" />
               <div class="flex flex-col gap-0.5">
-                <span class="text-xs font-medium text-brand-cream"
+                <span class="text-xs font-medium text-ink-primary"
                   >Microfono</span
                 >
                 <p
-                  class="m-0 text-2xs leading-relaxed text-brand-cream/60"
+                  class="m-0 text-2xs leading-relaxed text-ink-muted"
                 >
                   Necessario per registrare la tua voce.
                 </p>
@@ -331,15 +331,15 @@ async function startDownload() {
               {:else}
                 <MonitorX
                   size={16}
-                  class="mt-0.5 shrink-0 text-brand-cream/70"
+                  class="mt-0.5 shrink-0 text-ink-secondary"
                 />
               {/if}
               <div class="flex flex-col gap-0.5">
-                <span class="text-xs font-medium text-brand-cream"
+                <span class="text-xs font-medium text-ink-primary"
                   >Cattura audio sistema</span
                 >
                 <p
-                  class="m-0 text-2xs leading-relaxed text-brand-cream/60"
+                  class="m-0 text-2xs leading-relaxed text-ink-muted"
                 >
                   Necessaria per catturare l'audio di sistema (richiesta da
                   ScreenCaptureKit).
@@ -351,13 +351,13 @@ async function startDownload() {
 
         <div class="flex flex-col gap-1.5">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-brand-cream"
+            <span class="text-xs font-semibold text-ink-primary"
               >Modello Whisper</span
             >
 
             {#if modelPath}
               <button
-                class="p-2 cursor-pointer font-semibold text-brand-light transition hover:text-brand-cream"
+                class="p-2 cursor-pointer font-semibold text-brand-light transition hover:text-ink-primary"
                 onclick={() => revealItemInDir(modelPath!.slice(0, modelPath!.lastIndexOf("/")))}><Folder size={20} /></button
               >
             {/if}
@@ -368,7 +368,7 @@ async function startDownload() {
               Modello installato e pronto.
             </p>
           {:else}
-            <p class="m-0 text-xs leading-relaxed text-brand-cream/80">
+            <p class="m-0 text-xs leading-relaxed text-ink-secondary">
               Scarica il modello Whisper large-v3-turbo (~1.5 GB). Necessario
               solo al primo avvio.
             </p>
@@ -411,13 +411,13 @@ async function startDownload() {
 
         <div class="flex flex-col gap-1.5">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-brand-cream"
+            <span class="text-xs font-semibold text-ink-primary"
               >Cartella registrazioni</span
             >
 
             {#if recordingsDir}
               <button
-                class="p-2 cursor-pointer font-semibold text-brand-light transition hover:text-brand-cream"
+                class="p-2 cursor-pointer font-semibold text-brand-light transition hover:text-ink-primary"
                 onclick={() => revealItemInDir(recordingsDir!)}><Folder size={20} /></button
               >
             {/if}
@@ -431,13 +431,13 @@ async function startDownload() {
 
       <div class="flex flex-col gap-5">
         <div class="flex flex-col gap-1.5">
-          <span class="text-xs font-semibold text-brand-cream">Modello LLM</span>
-          <p class="m-0 text-2xs leading-relaxed text-brand-cream/60">
+          <span class="text-xs font-semibold text-ink-primary">Modello LLM</span>
+          <p class="m-0 text-2xs leading-relaxed text-ink-muted">
             Per il riassunto e la chat sulle trascrizioni. Opzionale: nulla si blocca se non lo scarichi.
           </p>
 
           {#if systemRamGb != null}
-            <p class="m-0 text-2xs text-brand-cream/40">RAM rilevata: {systemRamGb.toFixed(1)} GB</p>
+            <p class="m-0 text-2xs text-ink-faint">RAM rilevata: {systemRamGb.toFixed(1)} GB</p>
           {/if}
 
           {#if settings?.llmHfRepo && settings?.llmHfFile}
@@ -466,7 +466,7 @@ async function startDownload() {
 
           <input
             type="text"
-            class="rounded-lg border border-brand-cream/15 bg-brand-dark/50 px-2.5 py-1.5 text-xs text-brand-cream placeholder:text-brand-cream/40 focus:outline-none"
+            class="rounded-lg border border-brand-cream/15 bg-brand-dark/50 px-2.5 py-1.5 text-xs text-ink-primary placeholder:text-ink-faint focus:outline-none"
             placeholder="Cerca un modello GGUF su Hugging Face..."
             bind:value={hfQuery}
             onfocus={initSearch}
@@ -475,13 +475,13 @@ async function startDownload() {
 
           <div class="flex max-h-[46vh] flex-col gap-1 overflow-y-auto">
             {#if hfSearching}
-              <p class="m-0 text-xs text-brand-cream/50">Ricerca in corso...</p>
+              <p class="m-0 text-xs text-ink-muted">Ricerca in corso...</p>
             {:else if !hfSearched}
-              <p class="m-0 text-xs text-brand-cream/50">
+              <p class="m-0 text-xs text-ink-muted">
                 Clicca sul campo di ricerca per vedere i modelli più scaricati.
               </p>
             {:else if hfResults.length === 0}
-              <p class="m-0 text-xs text-brand-cream/50">Nessun risultato.</p>
+              <p class="m-0 text-xs text-ink-muted">Nessun risultato.</p>
             {:else}
               {#each hfResults as result (result.id)}
                 <div class="rounded-lg border border-brand-cream/10 bg-brand-dark/50 px-2.5 py-1.5">
@@ -490,8 +490,8 @@ async function startDownload() {
                     class="flex w-full cursor-pointer items-center justify-between gap-2 border-none bg-transparent p-0 text-left"
                     onclick={() => toggleRepo(result.id)}
                   >
-                    <span class="truncate text-xs font-medium text-brand-cream">{result.id}</span>
-                    <span class="shrink-0 text-2xs text-brand-cream/40">
+                    <span class="truncate text-xs font-medium text-ink-primary">{result.id}</span>
+                    <span class="shrink-0 text-2xs text-ink-faint">
                       {result.license ?? "?"} · {result.downloads.toLocaleString()} dl
                     </span>
                   </button>
@@ -499,13 +499,13 @@ async function startDownload() {
                   {#if expandedRepo === result.id}
                     <div class="mt-1.5 flex flex-col gap-1 border-t border-brand-cream/10 pt-1.5">
                       {#if hfFilesLoading}
-                        <p class="m-0 text-2xs text-brand-cream/50">Carico i file...</p>
+                        <p class="m-0 text-2xs text-ink-muted">Carico i file...</p>
                       {:else if hfFilesGated}
                         <p class="m-0 text-2xs text-amber-400">
                           🔒 Richiede autenticazione Hugging Face: non supportato.
                         </p>
                       {:else if hfFiles.length === 0}
-                        <p class="m-0 text-2xs text-brand-cream/50">Nessun file GGUF trovato.</p>
+                        <p class="m-0 text-2xs text-ink-muted">Nessun file GGUF trovato.</p>
                       {:else}
                         {#each hfFiles as file (file.filename)}
                           {@const badge = ramBadge(file.size_bytes)}
@@ -514,9 +514,9 @@ async function startDownload() {
                             class="flex cursor-pointer items-center justify-between gap-2 rounded-md border-none bg-transparent px-1.5 py-1 text-left transition hover:bg-brand-cream/5"
                             onclick={() => selectModel(result.id, file)}
                           >
-                            <span class="truncate text-2xs text-brand-cream/80">{file.filename}</span>
+                            <span class="truncate text-2xs text-ink-secondary">{file.filename}</span>
                             <span class="shrink-0 text-right text-2xs">
-                              <span class="text-brand-cream/50">{formatGb(file.size_bytes)}</span>
+                              <span class="text-ink-muted">{formatGb(file.size_bytes)}</span>
                               {#if badge}
                                 <span class={`ml-1 ${badge.className}`}>· {badge.label}</span>
                               {/if}

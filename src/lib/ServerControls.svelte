@@ -34,16 +34,16 @@ let {
 </script>
 
 <div class="flex flex-col gap-1.5">
-  <span class="text-xs font-semibold text-brand-cream">{title}</span>
+  <span class="text-xs font-semibold text-ink-primary">{title}</span>
 
   <div
     class="flex flex-col gap-2 rounded-lg border border-brand-cream/10 bg-brand-dark/50 px-2.5 py-2"
   >
     <div class="flex items-center justify-between">
-      <span class="text-xs text-brand-cream/70">Stato:</span>
+      <span class="text-xs text-ink-secondary">Stato:</span>
       <span
         class={`text-xs font-medium ${
-          status === "running" ? "text-green-400" : "text-brand-cream/60"
+          status === "running" ? "text-green-400" : "text-ink-muted"
         }`}
       >
         {status === "running"
@@ -57,7 +57,7 @@ let {
     {#if error}
       <p class="m-0 text-xs text-red-400 leading-tight">{error}</p>
     {:else if hint}
-      <p class="m-0 text-xs text-brand-cream/50 leading-tight">{hint}</p>
+      <p class="m-0 text-xs text-ink-muted leading-tight">{hint}</p>
     {/if}
   </div>
 

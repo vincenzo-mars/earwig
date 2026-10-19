@@ -29,18 +29,18 @@ async function handleRetry(entry: RecordingEntry) {
 
 <div class="flex flex-col gap-3">
   {#if recordings.loading && recordings.all.length === 0}
-    <p class="m-0 text-sm text-brand-cream/50">Caricamento...</p>
+    <p class="m-0 text-sm text-ink-muted">Caricamento...</p>
   {:else if recordings.all.length === 0}
     <div
       class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-brand-cream/10 bg-brand-darker/50 px-6 py-10 text-center"
     >
       <span
-        class="flex size-10 items-center justify-center rounded-full bg-brand-cream/5 text-brand-cream/40"
+        class="flex size-10 items-center justify-center rounded-full bg-brand-cream/5 text-ink-faint"
       >
         <AudioLines size={20} />
       </span>
-      <p class="m-0 text-sm font-semibold text-brand-cream/60">Nessuna registrazione, per ora.</p>
-      <p class="m-0 text-xs text-brand-cream/40">
+      <p class="m-0 text-sm font-semibold text-ink-muted">Nessuna registrazione, per ora.</p>
+      <p class="m-0 text-xs text-ink-faint">
         Premi REC per catturare microfono e audio di sistema.
       </p>
     </div>
@@ -56,10 +56,10 @@ async function handleRetry(entry: RecordingEntry) {
           disabled={rowsLocked}
           title={rowsLocked ? "Attendi la fine della registrazione in corso" : undefined}
         >
-          <span class="text-sm font-semibold text-brand-cream">{entry.name}</span>
+          <span class="text-sm font-semibold text-ink-primary">{entry.name}</span>
           <span class="flex items-center gap-2">
             {#if entry.transcript?.transcription_ms != null}
-              <span class="whitespace-nowrap font-mono text-2xs text-brand-cream/40">
+              <span class="whitespace-nowrap font-mono text-2xs text-ink-faint">
                 {formatElapsed(entry.transcript.transcription_ms)}
               </span>
             {/if}

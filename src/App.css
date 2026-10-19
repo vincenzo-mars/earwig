@@ -31,6 +31,26 @@
      (base, 2xl) sono riservati a REC e al timer. Niente valori letterali nel
      markup: un nuovo testo prende il gradino più piccolo che resta leggibile. */
   --text-2xs: 0.7rem;
+
+  /* Gerarchia dell'inchiostro: il testo usa questi quattro livelli, non alpha
+     arbitrarie di brand-cream. Gli alpha bassi di brand-cream (5-20) restano
+     per bordi e superfici, mai per testo. */
+  --color-ink-primary: var(--color-brand-cream);
+  --color-ink-secondary: color-mix(
+    in srgb,
+    var(--color-brand-cream) 70%,
+    transparent
+  );
+  --color-ink-muted: color-mix(
+    in srgb,
+    var(--color-brand-cream) 50%,
+    transparent
+  );
+  --color-ink-faint: color-mix(
+    in srgb,
+    var(--color-brand-cream) 40%,
+    transparent
+  );
 }
 
 @layer base {
@@ -49,7 +69,7 @@
   }
 
   body {
-    @apply bg-brand-dark text-brand-cream;
+    @apply bg-brand-dark text-ink-primary;
   }
 
   html {

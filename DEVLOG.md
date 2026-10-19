@@ -13,6 +13,17 @@ Formato:
 
 ---
 
+## 2026-10-19 — Token di inchiostro per la gerarchia del testo
+
+**Obiettivo:** il testo usava 13 alpha diverse di `brand-cream` (`/5` → `/90`), lo stesso male dei font size letterali: a occhio `/45` e `/50` coincidono.
+
+**Decisioni:**
+- Quattro token `ink-*` in `@theme` (primary = cream pieno, secondary 70%, muted 50%, faint 40%), definiti con `color-mix` così seguono il brand senza duplicare hex
+- Gli alpha bassi di `brand-cream` (5-20) restano bordi e superfici, mai testo: la regola è scritta nel commento dei token
+- Badge a 3 stati in `types.ts` compreso nella mappatura
+
+---
+
 ## 2026-10-19 — Scala tipografica centralizzata
 
 **Obiettivo:** il markup spargeva 13 font size diversi, 9 dei quali valori letterali (`0.62rem` → `0.85rem`) visivamente indistinguibili: la scala tipografica entra nei token `@theme` accanto a colori e raggi.
