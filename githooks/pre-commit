@@ -1,0 +1,13 @@
+#!/bin/sh
+# A commit touching src/ or src-tauri/ must ship a doc update (docs/, DEVLOG.md,
+# AGENTS.md, README.md). Bypass with: SKIP_DOCS=1 git commit ...
+
+[ -n "$SKIP_DOCS" ] && exit 0
+
+staged=$(git diff --cached --name-only 2>/dev/null) || exit 0
+
+printf '%s\n' "$staged" | grep -qE '^(src|src-tauri)/' || exit 0
+printf '%s\n' "$staged" | grep -qE '^(docs/|DEVLOG\.md|AGENTS\.md|README\.md)' && exit 0
+
+echo "Regola documentazione: file in src/ o src-tauri/ in stage senza aggiornamento docs/, DEVLOG.md, AGENTS.md o README.md. Aggiorna e stagea il doc corrispondente, oppure esegui il commit con SKIP_DOCS=1 per saltare il controllo." >&2
+exit 1

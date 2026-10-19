@@ -23,8 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 
-# Claude Code — la config di progetto (settings, hook, skill, comandi) è versionata,
-# solo lo stato locale e per-macchina resta fuori
-.claude/settings.local.json
+# Legacy Claude Code worktree (attivo su feat/dark-gray-palette; resta finché vive il worktree)
 .claude/worktrees/
-.claude/*.lock
