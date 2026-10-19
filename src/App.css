@@ -59,6 +59,14 @@
   --color-warn: #fbbf24;
   --color-danger: #f87171;
   --color-danger-strong: #dc2626;
+
+  /* Ombre: le due profondità dell'app + l'alone del REC, che segue il colore
+     del bottone di stato via var invece di duplicarlo in rgba. */
+  --shadow-raised: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-rec: 0 4px 16px color-mix(in srgb, var(--color-rec) 40%, transparent);
+  --shadow-rec-active: 0 4px 16px
+    color-mix(in srgb, var(--color-rec-strong) 40%, transparent);
 }
 
 @layer base {
@@ -91,12 +99,12 @@
   100% {
     box-shadow:
       0 0 0 10px color-mix(in srgb, var(--color-rec-strong) 15%, transparent),
-      0 4px 16px color-mix(in srgb, var(--color-rec-strong) 40%, transparent);
+      var(--shadow-rec-active);
   }
   50% {
     box-shadow:
       0 0 0 18px color-mix(in srgb, var(--color-rec-strong) 5%, transparent),
-      0 4px 16px color-mix(in srgb, var(--color-rec-strong) 40%, transparent);
+      var(--shadow-rec-active);
   }
 }
 

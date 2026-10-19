@@ -45,8 +45,8 @@ async function handleRecord() {
     <button
       class={`h-30 w-30 cursor-pointer rounded-full border-none text-base font-bold text-ink-primary transition-[background,box-shadow,transform] duration-200 active:scale-[0.96] disabled:cursor-default disabled:opacity-50 ${
         session.isRecording
-          ? "animate-[pulse-rec_1.5s_ease-in-out_infinite] bg-rec-strong shadow-[0_4px_16px_rgba(210,52,52,0.4)]"
-          : "bg-rec shadow-[0_4px_16px_rgba(171,43,41,0.4)] hover:bg-rec-strong"
+          ? "animate-[pulse-rec_1.5s_ease-in-out_infinite] bg-rec-strong shadow-rec-active"
+          : "bg-rec shadow-rec hover:bg-rec-strong"
       }`}
       onclick={handleRecord}
       disabled={!session.isRecording && !session.canRecord}

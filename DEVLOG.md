@@ -13,6 +13,17 @@ Formato:
 
 ---
 
+## 2026-10-19 — Ombre a token
+
+**Obiettivo:** 4 `shadow-[...]` inline con rgba hardcoded, e i keyframes `pulse-rec` che duplicavano in rgba il colore di `--color-rec-strong`.
+
+**Decisioni:**
+- Token `shadow-raised` (elementi flottanti), `shadow-pop` (logo onboarding), `shadow-rec`/`shadow-rec-active` (alone del REC) in `@theme`
+- `shadow-rec-active` usa `color-mix` su `var(--color-rec-strong)`: cambiare il rosso del bottone aggiorna anche il suo alone
+- I keyframes ora referenziano il token invece di ripetere il color-mix
+
+---
+
 ## 2026-10-19 — Token di inchiostro per la gerarchia del testo
 
 **Obiettivo:** il testo usava 13 alpha diverse di `brand-cream` (`/5` → `/90`), lo stesso male dei font size letterali: a occhio `/45` e `/50` coincidono.

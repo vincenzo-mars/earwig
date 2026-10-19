@@ -45,7 +45,7 @@ async function startDownload() {
   <img
     src="/icon.png"
     alt="Heedm"
-    class="h-20 w-20 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+    class="h-20 w-20 rounded-2xl shadow-pop"
   />
 
   <div class="flex flex-col gap-2">
