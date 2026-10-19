@@ -1,4 +1,4 @@
-# Heedm — istruzioni per Claude
+# Heedm — istruzioni di progetto
 
 ## Progetto
 
@@ -82,7 +82,7 @@ docs/
 Estende le regole globali (skill `/commit`), non le ripete. Specifico di heedm:
 
 - Il pre-commit hook esegue `biome check --staged`: lancia `npm run lint:fix` PRIMA di `git commit`, non dopo il fallimento
-- Un commit che tocca `src/` o `src-tauri/` deve includere il doc corrispondente (vedi Regola documentazione): l'hook `.claude/hooks/check-docs-updated.sh` lo impone, bypass `SKIP_DOCS=1`
+- Un commit che tocca `src/` o `src-tauri/` deve includere il doc corrispondente (vedi Regola documentazione): il pre-commit hook git `githooks/pre-commit` lo impone, bypass `SKIP_DOCS=1` (per clone, una volta: `git config core.hooksPath githooks`)
 
 ## Verifica (OBBLIGATORIA come i doc)
 

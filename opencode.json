@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permissions": [
+    { "action": "shell", "resource": "source *", "effect": "allow" },
+    { "action": "shell", "resource": "npm run typecheck", "effect": "allow" },
+    { "action": "shell", "resource": "npm run lint", "effect": "allow" },
+    { "action": "shell", "resource": "npm run lint:fix", "effect": "allow" },
+    { "action": "shell", "resource": "npm run tauri dev", "effect": "allow" },
+    { "action": "shell", "resource": "npx svelte-check *", "effect": "allow" },
+    { "action": "shell", "resource": "npx biome check *", "effect": "allow" },
+    { "action": "shell", "resource": "cargo check *", "effect": "allow" },
+    { "action": "shell", "resource": "cargo build *", "effect": "allow" },
+    { "action": "shell", "resource": "cargo test *", "effect": "allow" },
+    { "action": "shell", "resource": "cargo fmt *", "effect": "allow" },
+    { "action": "shell", "resource": "cargo clippy *", "effect": "allow" },
+    { "action": "shell", "resource": "cargo search *", "effect": "allow" },
+    {
+      "action": "shell",
+      "resource": "curl -s http://localhost:8080/*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "pkill -f whisper-server",
+      "effect": "allow"
+    }
+  ]
+}
