@@ -98,6 +98,6 @@ Cinque regole che si ripetono in tutto il repo. Capite queste, il resto è mecca
 Da tenere presente mentre leggi, perché la documentazione più vecchia mente in
 qualche punto:
 
-- La mappa moduli in `CLAUDE.md` cita `recorder/diarization.rs`: non esiste più, la diarizzazione è delegata a whisper (vedi `DEVLOG.md`, 2026-07-31). Non elenca nemmeno `Onboarding.svelte` e `lib/utils.ts`.
+- La mappa moduli in `AGENTS.md` cita `recorder/diarization.rs`: non esiste più, la diarizzazione è delegata a whisper (vedi `DEVLOG.md`, 2026-07-31). Non elenca nemmeno `Onboarding.svelte` e `lib/utils.ts`.
 - `README.md` è fermo a prima dell'onboarding e dell'LLM: indica `~/Movies/Heedm` come cartella registrazioni (oggi è `~/Documents/Heedm/Records`) e descrive una trascrizione manuale che oggi parte da sola dopo lo stop.
 - `delete_recording_notes` è registrato in `lib.rs` ma non è invocato da nessun punto del frontend.
