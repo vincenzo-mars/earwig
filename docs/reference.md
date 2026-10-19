@@ -325,6 +325,8 @@ Tema unico dark fisso: niente variante `dark:`, niente token semantici.
 
 Alias `$lib` → `src/lib` dichiarato sia in `vite.config.ts` (`resolve.alias`) sia in `tsconfig.json` (`compilerOptions.paths`, mai `baseUrl`): non essendo SvelteKit non è automatico.
 
+Icone dell'app in `src-tauri/icons/`: `bundle.icon` di `tauri.conf.json` referenzia `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns` e `icon.ico` (piattaforma Windows), mentre `icon.png` e `64x64.png` restano come sorgenti a risoluzione piena e non entrano nel bundle.
+
 ## Lint e format
 
 Biome (`biome.json`): `npm run lint` e `npm run lint:fix`. Le regole `noUnusedImports`/`noUnusedVariables` sono disattivate sui `.svelte` perché il parser non legge il markup e produce falsi positivi su simboli usati solo nel template.
