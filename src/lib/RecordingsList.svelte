@@ -1,4 +1,5 @@
 <script lang="ts">
+import { AudioLines } from "@lucide/svelte";
 import { push } from "svelte-spa-router";
 import Button from "./Button.svelte";
 import { recordings } from "./stores/recordings.svelte";
@@ -30,7 +31,19 @@ async function handleRetry(entry: RecordingEntry) {
   {#if recordings.loading && recordings.all.length === 0}
     <p class="m-0 text-sm text-brand-cream/50">Caricamento...</p>
   {:else if recordings.all.length === 0}
-    <p class="m-0 text-sm text-brand-cream/40">Nessuna registrazione, per ora.</p>
+    <div
+      class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-brand-cream/10 bg-brand-darker/50 px-6 py-10 text-center"
+    >
+      <span
+        class="flex size-10 items-center justify-center rounded-full bg-brand-cream/5 text-brand-cream/40"
+      >
+        <AudioLines size={20} />
+      </span>
+      <p class="m-0 text-sm font-semibold text-brand-cream/60">Nessuna registrazione, per ora.</p>
+      <p class="m-0 text-xs text-brand-cream/40">
+        Premi REC per catturare microfono e audio di sistema.
+      </p>
+    </div>
   {:else}
     {#each recordings.all as entry (entry.folder_path)}
       {@const status = transcriptStatusInfo(entry)}

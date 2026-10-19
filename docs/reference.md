@@ -207,6 +207,8 @@ Dopo uno STOP o un import riusciti chiama `recordings.load(true)`: la lista sta 
 
 Lista delle registrazioni, puramente presentazionale: nessuna prop, nessun header, nessuna larghezza propria (la decide chi la monta). Fa `recordings.load()` in un `$effect` al mount. Era la rotta `/list`, prima che la lista si trasferisse in home.
 
+Stato vuoto: card con bordo tratteggiato, icona `AudioLines`, titolo e hint ("Premi REC...") — non una riga ridotta a placeholder, perché è il primo volto della home per un utente nuovo.
+
 Ogni riga non è un unico `<button>`: è un `<div>` che contiene un `<button>` (nome, tempo di trascrizione, badge a 3 stati da `transcriptStatusInfo`, naviga a `/detail/<name>`) e un `Button` "Rilancia" separato (nesting di bottoni non è HTML valido).
 
 Due blocchi distinti, non uno solo:
