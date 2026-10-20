@@ -2,13 +2,13 @@
 
 ## Progetto
 
-**Earwig** è un'app desktop macOS per registrare audio (microfono + sistema) e trascriverlo localmente con whisper.cpp.
+**Earwig** è un'app desktop macOS per registrare audio (microfono + sistema) e trascriverlo localmente con NVIDIA Parakeet TDT 0.6B v3 (in-process via ONNX Runtime).
 
 - Stack: Tauri v2 + Svelte 5 + TypeScript + Vite
 - Backend: Rust (src-tauri/)
 - Frontend: Svelte (src/)
 - Target: macOS (arm64 + x64), con supporto futuro Linux e Windows
-- STT: solo locale tramite whisper-server (whisper.cpp), porta 8080
+- STT: locale in-process via parakeet-rs (Parakeet TDT 0.6B v3), nessun server esterno né porta
 - Riassunto/chat sulle trascrizioni: LLM locale tramite llama-server (llama.cpp), porta 8081, via Vercel AI SDK (core, non `@ai-sdk/svelte`)
 - Nessun Docker, nessuna dipendenza cloud
 
@@ -20,9 +20,9 @@ src-tauri/src/
   lib.rs                         # setup app, registra tutti i commands
   commands/
     mod.rs                       # settings, percorsi, permessi OS
-    server.rs                    # primitive condivise processo/porta (stt.rs + llm.rs)
+    server.rs                    # primitive condivise processo/porta (llm.rs)
     download.rs                  # streaming HTTP condiviso (stt.rs + llm.rs) per il download dei modelli
-    stt.rs                       # download modello, ciclo di vita whisper-server, trascrizione
+    stt.rs                       # download modello, motore in-process Parakeet TDT, trascrizione e diarizzazione
     llm.rs                       # ricerca modelli HF, download modello, ciclo di vita llama-server, note (riassunto/chat)
     recording.rs                 # start/stop/status/list registrazione, import file
   permissions.rs                 # permessi OS (Screen Recording via CoreGraphics, pannelli System Settings)
@@ -46,19 +46,21 @@ src/
     routes.ts                    # mappa rotte (svelte-spa-router, hash routing)
     llm.ts                       # provider AI SDK, prompt, streaming (unico file che conosce l'AI SDK)
     stores/
-      servers.svelte.ts          # stato whisper/llama + refresh e poll /health
+      servers.svelte.ts          # stato stt/llama + refresh e poll /health
       session.svelte.ts          # registrazione, trascrizione, lock e cronometri
       recordings.svelte.ts       # cache list_recordings, fonte unica di lista e dettaglio
     Button.svelte                # bottone dell'app (varianti ghost/icon/solid/danger/primary)
+    Modal.svelte                 # finestra modale generica con backdrop, transizioni e tasto chiusura
     PageHeader.svelte            # header delle pagine interne (back a icona, titolo, azioni)
-    Recorder.svelte              # rotta "/": schermata REC + lista registrazioni
-    Onboarding.svelte            # primo avvio: download modello whisper a schermo intero
-    SttIndicator.svelte          # indicatore stato server STT
-    SettingsPanel.svelte         # rotta "/settings": impostazioni/download modello/server STT+LLM
+    AccordionSection.svelte      # sezione collassabile con animazione slide (usato in SettingsPanel)
+    Recorder.svelte              # schermata base: hero REC + lista registrazioni
+    Onboarding.svelte            # primo avvio: download modello STT a schermo intero
+    SttIndicator.svelte          # indicatore stato motore STT
+    SettingsPanel.svelte         # modale "/settings": impostazioni/download modello/server STT+LLM
     ServerControls.svelte        # stato + bottoni di un server locale (usato 2x da SettingsPanel)
     DownloadProgressBar.svelte   # barra download modello (Onboarding + SettingsPanel)
     RecordingsList.svelte        # lista registrazioni, montata in home sotto il REC
-    RecordingDetail.svelte       # rotta "/detail/:id": dettaglio singola registrazione
+    RecordingDetail.svelte       # modale "/detail/:id": dettaglio singola registrazione
     TranscriptView.svelte        # rendering trascrizione con speaker
     TranscriptNotes.svelte       # riassunto + chat locale sulla trascrizione (orchestrazione)
     TranscriptChat.svelte        # chat locale: UI presentazionale (log, streaming, input)

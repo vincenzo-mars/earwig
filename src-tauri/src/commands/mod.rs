@@ -11,6 +11,7 @@ pub mod llm;
 pub mod recording;
 pub mod server;
 pub mod stt;
+pub mod window;
 
 use std::path::PathBuf;
 
@@ -19,9 +20,6 @@ use tauri::{AppHandle, Manager};
 
 use crate::permissions;
 
-pub(crate) const STT_PORT: u16 = 8080;
-// llama-server di suo usa 8080 come default (stesso di whisper-server): va
-// sempre passato `--port` esplicito, mai lasciato implicito.
 pub(crate) const LLM_PORT: u16 = 8081;
 
 // ── Settings ─────────────────────────────────────────────────────────────────
@@ -32,6 +30,8 @@ pub struct SttSettings {
     pub local_ready: bool,
     pub model_dir: Option<String>,
     pub recordings_dir: Option<String>,
+    #[serde(default)]
+    pub transcripts_dir: Option<String>,
     // Repo/file scelti dall'utente per il modello LLM locale (riassunto/chat).
     // `#[serde(default)]` è obbligatorio: senza, un settings.json esistente
     // scritto prima di questi campi fallirebbe il parsing e resetterebbe in
@@ -83,10 +83,21 @@ pub(crate) fn bundled_bin_path(app: &AppHandle, name: &str) -> Result<PathBuf, S
         .map_err(|e| e.to_string())
 }
 
-pub(crate) fn local_model_path(app: &AppHandle, settings: &SttSettings) -> PathBuf {
+pub(crate) fn local_parakeet_dir(app: &AppHandle, settings: &SttSettings) -> PathBuf {
     model_dir(app, settings)
         .join("models")
-        .join("ggml-large-v3-turbo.bin")
+        .join("parakeet-tdt-0.6b-v3")
+}
+
+pub(crate) fn is_stt_model_ready(app: &AppHandle, settings: &SttSettings) -> bool {
+    let dir = local_parakeet_dir(app, settings);
+    dir.join("encoder-model.int8.onnx").exists()
+        && dir.join("decoder_joint-model.int8.onnx").exists()
+        && dir.join("vocab.txt").exists()
+}
+
+pub(crate) fn local_model_path(app: &AppHandle, settings: &SttSettings) -> PathBuf {
+    local_parakeet_dir(app, settings)
 }
 
 /// Percorso del GGUF scelto dall'utente, scaricato da earwig stesso (vedi
@@ -134,6 +145,17 @@ pub(crate) fn recordings_dir(app: &AppHandle, settings: &SttSettings) -> PathBuf
     }
 }
 
+pub(crate) fn default_transcripts_dir(app: &AppHandle, settings: &SttSettings) -> PathBuf {
+    recordings_dir(app, settings)
+}
+
+pub(crate) fn transcripts_dir(app: &AppHandle, settings: &SttSettings) -> PathBuf {
+    match &settings.transcripts_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => default_transcripts_dir(app, settings),
+    }
+}
+
 #[tauri::command]
 pub async fn get_stt_settings(app: AppHandle) -> SttSettings {
     let path = settings_path(&app);
@@ -146,7 +168,7 @@ pub async fn get_stt_settings(app: AppHandle) -> SttSettings {
     // local_ready persistito è solo l'ultimo valore noto: la verità è il file
     // sul disco (l'utente può cancellarlo a mano, un download può essere stato
     // interrotto). Va sempre riverificato, mai fidarsi del flag salvato.
-    settings.local_ready = local_model_path(&app, &settings).exists();
+    settings.local_ready = is_stt_model_ready(&app, &settings);
     settings.llm_ready = llm_model_path(&app, &settings).is_some_and(|p| p.exists());
     settings
 }
@@ -183,7 +205,30 @@ pub async fn get_recordings_dir(app: AppHandle) -> String {
     dir.to_string_lossy().into_owned()
 }
 
+#[tauri::command]
+pub async fn get_transcripts_dir(app: AppHandle) -> String {
+    let settings = get_stt_settings(app.clone()).await;
+    let dir = transcripts_dir(&app, &settings);
+    tokio::fs::create_dir_all(&dir).await.ok();
+    dir.to_string_lossy().into_owned()
+}
+
+#[tauri::command]
+pub async fn set_transcripts_dir(app: AppHandle, path: Option<String>) -> Result<String, String> {
+    let mut settings = get_stt_settings(app.clone()).await;
+    settings.transcripts_dir = path.filter(|s| !s.trim().is_empty());
+    save_stt_settings(app.clone(), settings.clone()).await?;
+    let dir = transcripts_dir(&app, &settings);
+    tokio::fs::create_dir_all(&dir).await.ok();
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 // ── Permessi OS ───────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn check_microphone_permission() -> bool {
+    permissions::microphone_granted()
+}
 
 #[tauri::command]
 pub fn check_screen_recording_permission() -> bool {
