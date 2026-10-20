@@ -6,7 +6,7 @@ import {
   Folder,
   LoaderCircle,
   Mic,
-  MonitorCheck,
+  Monitor,
   MonitorX,
   Play,
   Power,
@@ -289,7 +289,7 @@ async function startDownload() {
               <div class="flex items-start gap-3">
                 <div class="mt-0.5 shrink-0">
                   {#if screenRecordingGranted}
-                    <MonitorCheck
+                    <Monitor
                       size={16}
                       class="text-ink-secondary transition-colors group-hover/item:text-brand-cream"
                     />
