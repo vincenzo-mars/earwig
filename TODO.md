@@ -58,7 +58,8 @@ Scelta da fare: animare il resize nativo lato Rust (CA transaction/window animat
 
 Oggi `compact_y` vive solo in memoria (`src-tauri/src/commands/window.rs:14`, `WindowModeState`): a ogni riavvio è `None` e la finestra parte dal centro (`get_screen_bounds`, `window.rs:57`). Se l'utente la sposta verso il basso con `set_compact_y` (`window.rs:172`), la posizione va persistita per utente in `settings.json` (`src-tauri/src/commands/mod.rs:61`) e riletta in setup.
 
-## 7. Distribuzione DMG: firma Developer ID + notarizzazione
+## 7. Distribuzione DMG: senza notarizzazione (decisione presa)
 
-- [ ] Le app scaricate dal web senza firma Developer ID + notarizzazione danno "danneggiata" su macOS Sequoia+; workaround locale `xattr -cr /Applications/Earwig.app` (verificato funzionante).
-- [ ] Decisione aperta: iscriversi ad Apple Developer Program (99 $/anno) e aggiungere i secrets `APPLE_CERTIFICATE`/`APPLE_ID`/`APPLE_PASSWORD`/`APPLE_TEAM_ID` a `release.yml` (Tauri firma e notarizza da solo con le env var), oppure distribuire solo con workaround manuale.
+- [x] Decisione: niente Apple Developer Program, quindi niente firma Developer ID né notarizzazione. Le release su GitHub restano firmate ad-hoc.
+- [x] Installazione su un nuovo Mac: scaricare DMG dalla release, copiare in `/Applications` e lanciare `xattr -cr /Applications/Earwig.app` (rimuove il quarantine che fa comparire "danneggiata" su macOS Sequoia+). Verificato funzionante.
+- [ ] Miglioria possibile senza Apple Developer: documentare il workaround nel README o nell'onboarding dell'app (l'utente non tecnico non lo sa fare da solo).
