@@ -59,5 +59,8 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
+      - name: Stub bundled server binaries
+        run: mkdir -p src-tauri/binaries && touch src-tauri/binaries/whisper-server src-tauri/binaries/llama-server
+
       - name: Cargo Check
         run: cargo check --manifest-path src-tauri/Cargo.toml
