@@ -154,7 +154,7 @@ pub async fn import_audio_file(app: AppHandle) -> Result<Option<String>, String>
     };
 
     let mono = audio::to_mono(samples, channels);
-    let mono16k = audio::resample_linear(&mono, sample_rate, TARGET_SAMPLE_RATE);
+    let mono16k = audio::resample(&mono, sample_rate, TARGET_SAMPLE_RATE);
 
     let path = new_recording_path(&app, None).await?;
     audio::write_wav(&mono16k, &path, TARGET_SAMPLE_RATE, 1)?;
@@ -257,37 +257,57 @@ pub async fn stop_recording(
         // numero di canali del device: portarlo a mono prima del resample è
         // obbligatorio, perché l'interpolazione lineare su buffer interleaved
         // mescolerebbe campioni di canali diversi.
-        let mic = audio::to_mono(mic_raw, ch);
-        let mic = audio::resample_linear(&mic, mic_native_rate, sr);
+        let mic_mono = audio::to_mono(mic_raw, ch);
+        let mic_mono = audio::resample(&mic_mono, mic_native_rate, sr);
 
         // AEC: rimuove dal mic l'echo acustico delle casse prima di scrivere il
         // file. Non è solo qualità audio: senza, l'audio di sistema rientrato nel
-        // canale mic falserebbe il conto di energia con cui whisper attribuisce
+        // canale mic falserebbe il conto di energia con cui si attribuiscono
         // gli speaker.
-        let mic = if had_sys_audio && !sys.is_empty() {
-            aec::cancel_echo(&mic, &sys, sr)
+        let mic_aec = if had_sys_audio && !sys.is_empty() {
+            aec::cancel_echo(&mic_mono, &sys, sr)
         } else {
-            mic
+            mic_mono.clone()
         };
+
+        // Rilevamento cuffie vs altoparlanti: se il mic "segue" l'inviluppo del
+        // sistema con un ritardo fisico, l'altra parte esce dalle casse e il
+        // leakage va cancellato con l'AEC. Con le cuffie non c'è eco fisica: il
+        // canale Tu trascrive il mic nudo, senza alcun processing (parità con
+        // l'input di Handy).
+        let has_leakage = had_sys_audio
+            && !sys.is_empty()
+            && audio::channels_correlated(&mic_mono, &sys, sr);
 
         // Bilanciamento del volume: dopo l'AEC il microfono ha spesso un livello RMS
         // notevolmente inferiore rispetto all'audio digitale di sistema (catturato a 0/-6 dBFS).
         // Pareggiamo l'RMS attivo del microfono a quello del sistema (o al target speech di 0.10)
-        // per garantire un ascolto stereo naturale, evitare che nel mix mono di Whisper la voce
-        // dell'utente scompaia causando allucinazioni, e rendere equo il confronto di energia L/R.
-        let mic = if had_sys_audio && !sys.is_empty() {
-            audio::balance_speech_levels(mic, &sys)
+        // per garantire un ascolto stereo naturale, evitare che nel mix mono la voce
+        // dell'utente scompaia, e rendere equo il confronto di energia L/R.
+        // Resta SOLO sull'audio salvato per l'ascolto: l'input ASR non riceve gain.
+        let mic_listen = if had_sys_audio && !sys.is_empty() {
+            audio::balance_speech_levels(mic_aec.clone(), &sys)
         } else {
-            audio::normalize_speech(mic, 0.10)
+            audio::normalize_speech(mic_aec.clone(), 0.10)
         };
 
         // Con audio di sistema il file è stereo (mic a sinistra, sistema a
-        // destra) così whisper può diarizzarlo da solo; senza, resta mono.
+        // destra) così la diarizzazione separa le voci; senza, resta mono.
         let (samples, channels) = if had_sys_audio && !sys.is_empty() {
-            (audio::interleave_stereo(&mic, &sys), 2)
+            (audio::interleave_stereo(&mic_listen, &sys), 2)
         } else {
-            (mic, 1)
+            (mic_listen, 1)
         };
+
+        // Input ASR ottimizzato: mono 16 kHz senza gain. run_transcription
+        // trascrive il canale Tu da qui; il canale Altri resta nel WAV stereo.
+        let asr_samples = if has_leakage { mic_aec } else { mic_mono };
+        audio::write_wav(
+            &asr_samples,
+            &wav_path.with_file_name("mic_asr.wav"),
+            sr,
+            1,
+        )?;
         audio::write_wav(&samples, &wav_path, sr, channels)
     })
     .await

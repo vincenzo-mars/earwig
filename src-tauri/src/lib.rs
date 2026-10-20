@@ -25,7 +25,6 @@ pub fn run() {
         .manage(RecorderState::new())
         .manage(SttEngineState::new())
         .manage(LlamaServerState::new())
-        .manage(commands::window::WindowModeState::default())
         .setup(|app| {
             // Menu contestuale per la Tray icon
             let settings_item =
@@ -131,6 +130,7 @@ pub fn run() {
             commands::recording::import_audio_file,
             commands::recording::list_recordings,
             commands::stt::transcribe_recording,
+            commands::stt::get_stt_presets,
             commands::stt::check_stt_server,
             commands::stt::start_stt_server,
             commands::stt::stop_stt_server,
@@ -159,10 +159,6 @@ pub fn run() {
             commands::check_microphone_permission,
             commands::check_screen_recording_permission,
             commands::open_permission_settings,
-            commands::window::set_compact_mode,
-            commands::window::set_compact_hover,
-            commands::window::set_compact_y,
-            commands::window::get_compact_position,
             commands::window::show_dashboard,
             commands::window::hide_dashboard,
         ])

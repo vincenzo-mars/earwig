@@ -46,10 +46,19 @@ pub struct SttSettings {
     // `content_length()` durante lo stream).
     #[serde(default)]
     pub llm_size_bytes: u64,
+    // Preset del modello STT scelto dall'utente (vedi `stt.rs` per la tabella).
+    // `#[serde(default)]` come sopra: settings.json più vecchi del campo non
+    // devono fallire il parsing.
+    #[serde(default = "default_stt_model_id")]
+    pub stt_model_id: String,
     // Come `local_ready` per whisper: valore persistito solo indicativo, la
     // verità è sempre il file sul disco (vedi get_stt_settings sotto).
     #[serde(default)]
     pub llm_ready: bool,
+}
+
+pub(crate) fn default_stt_model_id() -> String {
+    "parakeet-v3-int8".to_string()
 }
 
 fn app_data_dir(app: &AppHandle) -> PathBuf {
@@ -86,14 +95,15 @@ pub(crate) fn bundled_bin_path(app: &AppHandle, name: &str) -> Result<PathBuf, S
 pub(crate) fn local_parakeet_dir(app: &AppHandle, settings: &SttSettings) -> PathBuf {
     model_dir(app, settings)
         .join("models")
-        .join("parakeet-tdt-0.6b-v3")
+        .join(stt::stt_preset(&settings.stt_model_id).dir_name)
 }
 
 pub(crate) fn is_stt_model_ready(app: &AppHandle, settings: &SttSettings) -> bool {
     let dir = local_parakeet_dir(app, settings);
-    dir.join("encoder-model.int8.onnx").exists()
-        && dir.join("decoder_joint-model.int8.onnx").exists()
-        && dir.join("vocab.txt").exists()
+    stt::stt_preset(&settings.stt_model_id)
+        .files
+        .iter()
+        .all(|file| dir.join(file).exists())
 }
 
 pub(crate) fn local_model_path(app: &AppHandle, settings: &SttSettings) -> PathBuf {

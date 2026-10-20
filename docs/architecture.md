@@ -18,11 +18,13 @@ Per la superficie API (comandi Tauri, tipi, componenti Svelte) vedi [`reference.
 [mic_samples: Arc<Mutex<Vec<f32>>>]  [sys_samples: Arc<Mutex<Vec<f32>>>]
     │                               │
     ▼                               │
-[audio::to_mono()]                  │  downmix esplicito: resample_linear su
+[audio::to_mono()]                  │  downmix esplicito: resample su
     │                               │  buffer interleaved mescolerebbe i canali
     ▼                               │
-[audio::resample_linear()]          │  solo il mic: cpal non forza un rate,
+[audio::resample()]                 │  solo il mic: cpal non forza un rate,
 mic_native_rate → 16kHz             │  sys arriva già a TARGET_SAMPLE_RATE
+passa-basso FIR anti-alias +        │
+interpolazione lineare              │
     │                               │
     └──────────┬────────────────────┘
                ▼
@@ -38,16 +40,21 @@ mic_native_rate → 16kHz             │  sys arriva già a TARGET_SAMPLE_RATE
         [audio::interleave_stereo()]   mic → canale L, sistema → canale R
                │                       (senza audio di sistema resta mono)
                ▼
-        [audio::write_wav()]           WAV Int16 PCM, 16kHz
-               │
+        [audio::write_wav()]           WAV Int16 PCM, 16kHz; scrive anche
+               │                       mic_asr.wav: canale Tu per l'ASR (mono
+               │                       16k senza gain: mic nudo con cuffie,
+               │                       mic AEC-only con altoparlanti)
                ▼
+        [<timestamp>/mic_asr.wav]
+               │
         [<timestamp>/recording.wav]
                │
                ▼
    [transcribe_recording()]            In-process Parakeet TDT 0.6B v3 (ONNX)
-   de-interleave stereo:               Nessun server esterno né porta 8080.
-   canale L (mic) → YOU ("0")          Segmentazione in frasi naturali.
-   canale R (sys) → THEM ("1")
+   se c'è mic_asr.wav:                 Nessun server esterno né porta 8080.
+   canale Tu da mic_asr.wav ("0")      Blocchi ~120s tagliati sui silenzi.
+   canale R (sys) → THEM ("1")         I WAV stereo legacy seguono la catena
+                                       storica.
                │
                ▼
    [TranscriptResult]                  segments[].speaker = "0" | "1" | None
@@ -109,8 +116,8 @@ Se la cattura di sistema fallisce la registrazione **non** si interrompe: l'erro
 | `active_speech_rms(&[f32], frame_size) -> f32` | Calcola l'RMS del parlato attivo (top 30% frame energetici), ignorando silenzi e rumore di fondo |
 | `normalize_speech(Vec<f32>, target_rms) -> Vec<f32>` | Normalizza il livello del parlato a un target RMS con limiter di picco (max 0.95) e cap al guadagno (max 10x) |
 | `balance_speech_levels(mic, sys) -> Vec<f32>` | Allinea l'RMS attivo del microfono a quello del sistema per evitare squilibri stereo e allucinazioni Whisper |
-| `to_mono(Vec<f32>, channels) -> Vec<f32>` | Prende ownership per restituire il buffer intatto quando è già mono. Va sempre chiamata **prima** di `resample_linear` |
-| `resample_linear(&[f32], from, to)` | Interpolazione lineare pura-Rust, nessuna dipendenza esterna. Assume input **mono** |
+| `to_mono(Vec<f32>, channels) -> Vec<f32>` | Prende ownership per restituire il buffer intatto quando è già mono. Va sempre chiamata **prima** di `resample` |
+| `resample(&[f32], from, to)` | Passa-basso FIR anti-alias (Hamming 63 tap, cutoff 0.45 × Nyquist destinazione) + interpolazione lineare, nessuna dipendenza esterna. Assume input **mono**. Il resample lineare puro (sostituito) aliasava lo spettro sopra Nyquist nel banda vocale e degradava l'ASR in modo misurabile |
 | `interleave_stereo(left, right)` | Intreccia mic e sistema zero-paddando il più corto |
 | `write_wav(&[f32], path, rate, channels)` | `hound`, Int16 PCM |
 
@@ -231,16 +238,6 @@ Generazione automatica del riassunto solo se `llmStatus === "running"` all'apert
 ### Onboarding: nessun gate
 
 Il download/scelta del modello LLM è opzionale e lazy: `Onboarding.svelte` resta invariato e riguarda solo whisper (nulla funziona senza), la chat è puramente additiva su un'app che già registra e trascrive.
-
-### Modalità ridotta (Edge drawer / Mini bar)
-
-La modalità ridotta (`set_compact_mode`, `set_compact_hover`, `set_compact_y`, `get_compact_position` in `commands/window.rs`, con UI in `CompactStrip.svelte`) permette di tenere Earwig sempre attivo ancorato al bordo destro dello schermo in background con una linguetta minimal in stile macOS premium (colori coerenti con l'app, senza animazioni fancy):
-- **Trasparenza nativa**: finestra configurata con `transparent: true` e `macOSPrivateApi: true` in `tauri.conf.json`, feature `macos-private-api` abilitata per `tauri` in `Cargo.toml`, e classe `compact-mode` su `html`, `body` e `#app` con `background: transparent !important`.
-- **I 2 stati della linguetta**:
-  1. **Idle (non hover)**: sporge solo una linguetta discreta aumentata a `w-[12px]` dal bordo destro dello schermo con un sobrio micro-dot; l'ingombro della finestra è di soli 18px per non intralciare i click su altre app.
-  2. **Hover (sopra la linguetta)**: la linguetta si allarga a `w-[82px]` con layout ultra-compatto senza timer: a sinistra il pulsante REC/STOP circolare (con icona Play centrata poco a destra), affiancato all'icona nuda cliccabile `Maximize2` (senza round button) e ai 6 puntini verticali `GripVertical` posizionati a ridosso del bordo schermo. Zero polling in background, transizione fluida e reattiva guidata dagli eventi del puntatore.
-- **Spostamento verticale (Draggable)**: tramite l'icona grip `GripVertical` l'utente può trascinare liberamente la barra su e giù lungo il bordo destro dello schermo (`set_compact_y`), con clamping automatico per evitare la barra dei menu di macOS in alto e il Dock in basso.
-- **Transizione ridotta → normale**: ripristina decorazioni native, disattiva `always_on_top`, riapplica i vincoli di dimensione minima e riposiziona la finestra alle coordinate precedenti.
 
 ### Tray Icon (Menu Bar) e Gestione Dinamica del Dock
 

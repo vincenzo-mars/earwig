@@ -15,6 +15,67 @@ use super::{get_stt_settings, is_stt_model_ready, local_parakeet_dir, save_stt_s
 const PARAKEET_BASE_URL: &str =
     "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main";
 
+/// Preset di modello scaricabile: tutti devono essere export ONNX di
+/// Parakeet TDT compatibili con `parakeet_rs` (encoder/decoder_joint/vocab).
+pub(crate) struct SttPreset {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub dir_name: &'static str,
+    pub base_url: &'static str,
+    pub files: &'static [&'static str],
+}
+
+pub(crate) const STT_PRESETS: &[SttPreset] = &[
+    SttPreset {
+        id: "parakeet-v3-int8",
+        label: "Consigliato: multilingua, ~671 MB",
+        // Stessa dir storica dell'int8: gli install esistenti non riscaricano.
+        dir_name: "parakeet-tdt-0.6b-v3",
+        base_url: PARAKEET_BASE_URL,
+        files: &[
+            "vocab.txt",
+            "decoder_joint-model.int8.onnx",
+            "encoder-model.int8.onnx",
+        ],
+    },
+    SttPreset {
+        id: "parakeet-v3-fp32",
+        label: "Massima qualità: multilingua, ~2.55 GB",
+        dir_name: "parakeet-tdt-0.6b-v3-fp32",
+        base_url: PARAKEET_BASE_URL,
+        files: &[
+            "vocab.txt",
+            "decoder_joint-model.onnx",
+            "encoder-model.onnx",
+            "encoder-model.onnx.data",
+        ],
+    },
+];
+
+pub(crate) fn stt_preset(id: &str) -> &'static SttPreset {
+    STT_PRESETS
+        .iter()
+        .find(|p| p.id == id)
+        .unwrap_or(&STT_PRESETS[0])
+}
+
+#[derive(Serialize)]
+pub struct SttPresetDto {
+    pub id: String,
+    pub label: String,
+}
+
+#[tauri::command]
+pub fn get_stt_presets() -> Vec<SttPresetDto> {
+    STT_PRESETS
+        .iter()
+        .map(|p| SttPresetDto {
+            id: p.id.to_string(),
+            label: p.label.to_string(),
+        })
+        .collect()
+}
+
 // ── In-Process Engine State ───────────────────────────────────────────────────
 
 pub struct SttEngineState(pub Mutex<Option<ParakeetTDT>>);
@@ -54,50 +115,54 @@ fn get_or_load_model<'a>(
 #[tauri::command]
 pub async fn download_local_model(app: AppHandle) -> Result<(), String> {
     let settings = get_stt_settings(app.clone()).await;
+    let preset = stt_preset(&settings.stt_model_id);
     let parakeet_dir = local_parakeet_dir(&app, &settings);
     tokio::fs::create_dir_all(&parakeet_dir)
         .await
         .map_err(|e| e.to_string())?;
 
-    let vocab_path = parakeet_dir.join("vocab.txt");
-    let decoder_path = parakeet_dir.join("decoder_joint-model.int8.onnx");
-    let encoder_path = parakeet_dir.join("encoder-model.int8.onnx");
+    // Una sola installazione alla volta: al cambio di preset la dir del
+    // modello precedente viene rimossa (sostituzione, non accumulo).
+    for other in STT_PRESETS.iter().filter(|p| p.id != preset.id) {
+        let old_dir = parakeet_dir
+            .parent()
+            .map(|models| models.join(other.dir_name));
+        if let Some(old_dir) = old_dir {
+            if old_dir != parakeet_dir {
+                tokio::fs::remove_dir_all(&old_dir).await.ok();
+            }
+        }
+    }
 
-    // 1. vocab.txt (~94 KB)
-    if !vocab_path.exists() {
+    for file in preset.files {
+        let dest = parakeet_dir.join(file);
+        if dest.exists() {
+            continue;
+        }
+        let label = if file.contains("encoder") {
+            "model"
+        } else if file.contains("decoder") {
+            "decoder"
+        } else {
+            "vocab"
+        };
         download_to_file(
             &app,
-            &format!("{PARAKEET_BASE_URL}/vocab.txt"),
-            &vocab_path,
+            &format!("{}/{file}", preset.base_url),
+            &dest,
             "download-progress",
-            "vocab",
+            label,
         )
         .await?;
     }
 
-    // 2. decoder_joint-model.int8.onnx (~18.2 MB)
-    if !decoder_path.exists() {
-        download_to_file(
-            &app,
-            &format!("{PARAKEET_BASE_URL}/decoder_joint-model.int8.onnx"),
-            &decoder_path,
-            "download-progress",
-            "decoder",
-        )
-        .await?;
-    }
-
-    // 3. encoder-model.int8.onnx (~652 MB - download principale con progresso)
-    if !encoder_path.exists() {
-        download_to_file(
-            &app,
-            &format!("{PARAKEET_BASE_URL}/encoder-model.int8.onnx"),
-            &encoder_path,
-            "download-progress",
-            "model",
-        )
-        .await?;
-    }
+    // Il motore in-memory potrebbe puntare alla dir appena cancellata o al
+    // modello nuovo: si azzera e il lazy-load ricaricherà dalla dir scelta.
+    app.state::<SttEngineState>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .take();
 
     let mut settings = get_stt_settings(app.clone()).await;
     settings.local_ready = true;
@@ -186,8 +251,11 @@ pub struct TranscriptError {
     pub message: String,
 }
 
-/// Trascrive un canale audio mono a 16 kHz suddividendolo in blocchi da 120 secondi
-/// per garantire stabilità della memoria anche su registrazioni prolungate.
+/// Trascrive un canale audio mono a 16 kHz suddividendolo in blocchi da ~120
+/// secondi per garantire stabilità della memoria anche su registrazioni
+/// prolungate. I tagli non cadono a tempo fisso: vicino al limite di 120s il
+/// blocco viene spezzato nel frame più silenzioso di una finestra di ±5s, per
+/// non troncare parole e frasi a metà.
 fn transcribe_channel(
     model: &mut ParakeetTDT,
     samples: Vec<f32>,
@@ -198,10 +266,38 @@ fn transcribe_channel(
     }
 
     const CHUNK_LEN: usize = 120 * 16_000;
+    const SEARCH_WINDOW: usize = 5 * 16_000;
+    const FRAME: usize = 480; // 30 ms a 16 kHz
     let mut segments = Vec::new();
 
-    for (chunk_idx, chunk) in samples.chunks(CHUNK_LEN).enumerate() {
-        let chunk_offset_sec = (chunk_idx * CHUNK_LEN) as f64 / 16_000.0;
+    // Bordi dei blocchi: il bordo successivo cerca il frame con l'energia
+    // minima nella finestra attorno a pos + CHUNK_LEN, così il taglio cade in
+    // una pausa invece che a metà parola.
+    let mut boundaries = vec![0usize];
+    while samples.len() - *boundaries.last().unwrap() > CHUNK_LEN {
+        let target = boundaries.last().unwrap() + CHUNK_LEN;
+        let lo = target.saturating_sub(SEARCH_WINDOW);
+        let hi = (target + SEARCH_WINDOW).min(samples.len());
+        let mut quietest = target;
+        let mut quietest_energy = f32::MAX;
+        let mut frame = lo;
+        while frame + FRAME <= hi {
+            let energy: f32 = samples[frame..frame + FRAME].iter().map(|s| s * s).sum::<f32>()
+                / FRAME as f32;
+            if energy < quietest_energy {
+                quietest_energy = energy;
+                quietest = frame + FRAME / 2;
+            }
+            frame += FRAME;
+        }
+        boundaries.push(quietest);
+    }
+    boundaries.push(samples.len());
+
+    for pair in boundaries.windows(2) {
+        let (start, end) = (pair[0], pair[1]);
+        let chunk = &samples[start..end];
+        let chunk_offset_sec = start as f64 / 16_000.0;
 
         // Skip chunk puramente silenziosi (senza alcun segnale audio significativo)
         let peak = chunk.iter().fold(0.0f32, |acc, &s| acc.max(s.abs()));
@@ -326,41 +422,77 @@ async fn run_transcription(app: &AppHandle, path: &str) -> Result<TranscriptResu
                 .map_err(|e| format!("Errore decodifica campioni WAV: {e}"))?,
         };
 
-        // Assicura frequenza a 16 kHz
-        let (samples, channels) = if spec.sample_rate != 16000 {
+        // Input ASR ottimizzato: stop_recording salva mic_asr.wav quando il mic
+        // conviene nudo (cuffie, nessun leakage) o con solo AEC (altoparlanti),
+        // sempre a 16 kHz e senza gain. Il canale "Altri" resta il destro del
+        // WAV stereo (audio di sistema digitale, già pulito). Le registrazioni
+        // vecchie senza mic_asr.wav seguono la catena storica.
+        let asr_mic_path = Path::new(&path_str)
+            .parent()
+            .map(|p| p.join("mic_asr.wav"))
+            .filter(|p| p.exists());
+
+        let mut segments = if let Some(asr_path) = asr_mic_path {
+            let mut asr_reader = hound::WavReader::open(&asr_path)
+                .map_err(|e| format!("Impossibile aprire mic_asr.wav: {e}"))?;
+            let asr_spec = asr_reader.spec();
+            let mic_samples: Vec<f32> = match asr_spec.sample_format {
+                hound::SampleFormat::Int => {
+                    let max = (1i64 << (asr_spec.bits_per_sample - 1)) as f32;
+                    asr_reader
+                        .samples::<i32>()
+                        .map(|s| s.map(|v| v as f32 / max))
+                        .collect::<Result<Vec<f32>, _>>()
+                        .map_err(|e| format!("Errore decodifica campioni: {e}"))?
+                }
+                hound::SampleFormat::Float => asr_reader
+                    .samples::<f32>()
+                    .collect::<Result<Vec<f32>, _>>()
+                    .map_err(|e| format!("Errore decodifica campioni: {e}"))?,
+            };
+            let mic_samples = if asr_spec.sample_rate != 16000 {
+                crate::recorder::audio::resample(&mic_samples, asr_spec.sample_rate, 16000)
+            } else {
+                mic_samples
+            };
+
+            let mut segs = transcribe_channel(model, mic_samples, Some("0".to_string()))?;
+
+            if spec.channels == 2 {
+                let right: Vec<f32> = raw_samples.iter().skip(1).step_by(2).copied().collect();
+                let right = if spec.sample_rate != 16000 {
+                    crate::recorder::audio::resample(&right, spec.sample_rate, 16000)
+                } else {
+                    right
+                };
+                segs.extend(transcribe_channel(model, right, Some("1".to_string()))?);
+            }
+            segs
+        } else if spec.sample_rate != 16000 {
             if spec.channels == 2 {
                 let left: Vec<f32> = raw_samples.iter().step_by(2).copied().collect();
                 let right: Vec<f32> = raw_samples.iter().skip(1).step_by(2).copied().collect();
-                let left_res = crate::recorder::audio::resample_linear(&left, spec.sample_rate, 16000);
-                let right_res = crate::recorder::audio::resample_linear(&right, spec.sample_rate, 16000);
-                (crate::recorder::audio::interleave_stereo(&left_res, &right_res), 2)
+                let left_res = crate::recorder::audio::resample(&left, spec.sample_rate, 16000);
+                let right_res = crate::recorder::audio::resample(&right, spec.sample_rate, 16000);
+                let mut segs =
+                    transcribe_channel(model, left_res, Some("0".to_string()))?;
+                segs.extend(transcribe_channel(model, right_res, Some("1".to_string()))?);
+                segs
             } else {
-                (crate::recorder::audio::resample_linear(&raw_samples, spec.sample_rate, 16000), 1)
+                let mono = crate::recorder::audio::resample(&raw_samples, spec.sample_rate, 16000);
+                transcribe_channel(model, mono, None)?
             }
+        } else if spec.channels == 2 {
+            let left: Vec<f32> = raw_samples.iter().step_by(2).copied().collect();
+            let right: Vec<f32> = raw_samples.iter().skip(1).step_by(2).copied().collect();
+            let mut segs = transcribe_channel(model, left, Some("0".to_string()))?;
+            segs.extend(transcribe_channel(model, right, Some("1".to_string()))?);
+            segs
         } else {
-            (raw_samples, spec.channels)
+            transcribe_channel(model, raw_samples.clone(), None)?
         };
 
-        // Diarizzazione fisica garantita:
-        // Channel 0 (Sinistro) = Microfono dell'utente (YOU -> "0")
-        // Channel 1 (Destro)   = Audio di sistema (THEM -> "1")
-        let mut segments = if channels == 2 {
-            let left_samples: Vec<f32> = samples.iter().step_by(2).copied().collect();
-            let right_samples: Vec<f32> = samples.iter().skip(1).step_by(2).copied().collect();
-
-            let mut segs_left = transcribe_channel(model, left_samples, Some("0".to_string()))?;
-            let segs_right = transcribe_channel(model, right_samples, Some("1".to_string()))?;
-
-            segs_left.extend(segs_right);
-            segs_left.sort_by(|a, b| {
-                a.start
-                    .partial_cmp(&b.start)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            segs_left
-        } else {
-            transcribe_channel(model, samples.clone(), None)?
-        };
+        segments.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
 
         for (i, seg) in segments.iter_mut().enumerate() {
             seg.id = i as u32;
@@ -372,11 +504,7 @@ async fn run_transcription(app: &AppHandle, path: &str) -> Result<TranscriptResu
             .collect::<Vec<&str>>()
             .join("\n");
 
-        let duration = if channels == 2 {
-            (samples.len() / 2) as f64 / 16000.0
-        } else {
-            samples.len() as f64 / 16000.0
-        };
+        let duration = raw_samples.len() as f64 / (spec.sample_rate as f64 * spec.channels as f64);
 
         let result = TranscriptResult {
             task: "transcribe".to_string(),

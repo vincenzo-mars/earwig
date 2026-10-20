@@ -10,7 +10,6 @@ let processingItem = $state<ProcessingItem | null>(null);
 let durationMs = $state(0);
 let transcribeMs = $state(0);
 let error = $state<string | null>(null);
-let isCompact = $state(false);
 
 let durationTimer: ReturnType<typeof setInterval> | undefined;
 let transcribeTimer: ReturnType<typeof setInterval> | undefined;
@@ -166,20 +165,7 @@ async function importFile(): Promise<boolean> {
   }
 }
 
-async function setCompactMode(enabled: boolean) {
-  isCompact = enabled;
-  try {
-    await invoke("set_compact_mode", { enabled });
-  } catch (e) {
-    console.error("Failed to toggle compact mode:", e);
-    isCompact = !enabled;
-  }
-}
-
 export const session = {
-  get isCompact() {
-    return isCompact;
-  },
   get isRecording() {
     return isRecording;
   },
@@ -218,7 +204,6 @@ export const session = {
   },
   startRecording,
   stopRecording,
-  setCompactMode,
   importFile,
   runTranscription,
 };

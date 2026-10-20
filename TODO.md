@@ -18,7 +18,9 @@ Punto di partenza: mix e normalizzazione in `src-tauri/src/recorder/audio.rs` (g
 
 ## 3. Qualità della voce in trascrizione
 
-- [ ] Capire se e come si può migliorare la qualità percepita del vocale prima della trascrizione.
+- [x] Diagnostica eseguita: l'aliasing del resample lineare 48k→16k degradava il riconoscimento (verificato con test TTS + esempio `transcribe_wav`). Fix applicato: `resample` con FIR passa-basso anti-alias in `audio.rs`.
+- [x] Input ASR ottimizzato: mic nudo con cuffie (leakage rilevato automaticamente), mic AEC-only con altoparlanti, niente doppio AGC sull'input; scelta preset int8/fp32 in Settings e Onboarding.
+- [ ] Verifica finale su call reale: trascrizione Tu/Altri alla pari di Handy. Se resta margine, valutare VAD e pre-processing mic.
 
 Dipende in parte dalla voce 2. Punti da valutare: pre-processing sul canale mic (gate, EQ, loudness), VAD, cosa passa a parakeet (`src-tauri/src/commands/stt.rs`).
 
@@ -33,7 +35,7 @@ Punto di partenza: `src/lib/RecordingsList.svelte:81` (blocco "Durata STT / Badg
 
 ## 5. Animazioni hover della linguetta compatta: scatti
 
-- [ ] Le transizioni di hover della barra minima hanno scatti visibili all'ingresso e all'uscita.
+- [x] Le transizioni di hover della barra minima hanno scatti visibili all'ingresso e all'uscita. Chiuso con un solo padrone dell'animazione: il CSS anima la larghezza, il resize nativo è governato dal frontend (crescita a hover-start, restringimento differito di 220ms dopo il mouseleave con timer cancellabile al rientro).
 
 **Causa (due animazioni parallele che non sono mai sincronizzate):** il movimento è animato due volte, in modo indipendente.
 
@@ -52,6 +54,12 @@ Scelta da fare: animare il resize nativo lato Rust (CA transaction/window animat
 
 ## 6. Posizione verticale della modalità ridotta persistente per utente
 
-- [ ] All'avvio la Y della linguetta compatta deve essere quella salvata dell'utente, non recentrata.
+- [x] All'avvio la Y della linguetta compatta deve essere quella salvata dell'utente, non recentrata. Chiuso: campo `compactY` in `settings.json`, `save_compact_y` a fine drag, caricamento in `set_compact_mode`.
 
 Oggi `compact_y` vive solo in memoria (`src-tauri/src/commands/window.rs:14`, `WindowModeState`): a ogni riavvio è `None` e la finestra parte dal centro (`get_screen_bounds`, `window.rs:57`). Se l'utente la sposta verso il basso con `set_compact_y` (`window.rs:172`), la posizione va persistita per utente in `settings.json` (`src-tauri/src/commands/mod.rs:61`) e riletta in setup.
+
+## 7. Distribuzione DMG: senza notarizzazione (decisione presa)
+
+- [x] Decisione: niente Apple Developer Program, quindi niente firma Developer ID né notarizzazione. Le release su GitHub restano firmate ad-hoc.
+- [x] Installazione su un nuovo Mac: scaricare DMG dalla release, copiare in `/Applications` e lanciare `xattr -cr /Applications/Earwig.app` (rimuove il quarantine che fa comparire "danneggiata" su macOS Sequoia+). Verificato funzionante.
+- [x] Miglioria possibile senza Apple Developer: workaround documentato nel README (sezione Installazione) e nell'onboarding dell'app (card con il comando, visibile da dentro l'app).

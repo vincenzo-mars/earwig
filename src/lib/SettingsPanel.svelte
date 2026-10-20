@@ -6,7 +6,7 @@ import {
   Folder,
   LoaderCircle,
   Mic,
-  MonitorCheck,
+  Monitor,
   MonitorX,
   Play,
   Power,
@@ -28,7 +28,7 @@ import DownloadProgressBar from "./DownloadProgressBar.svelte";
 import Modal from "./Modal.svelte";
 import { servers } from "./stores/servers.svelte";
 import { session } from "./stores/session.svelte";
-import type { DownloadProgress, SttSettings } from "./types";
+import type { DownloadProgress, SttModelPreset, SttSettings } from "./types";
 
 let { onclose }: { onclose?: () => void } = $props();
 
@@ -42,6 +42,8 @@ const close = () => {
 
 let settings = $state<SttSettings | null>(null);
 let downloading = $state(false);
+let switchingModel = $state(false);
+let presets = $state<SttModelPreset[]>([]);
 let dlProgress = $state<DownloadProgress | null>(null);
 let modelPath = $state<string | null>(null);
 let recordingsDir = $state<string | null>(null);
@@ -122,6 +124,10 @@ $effect(() => {
     }
   });
 
+  invoke<SttModelPreset[]>("get_stt_presets").then((p) => {
+    presets = p;
+  });
+
   return () => {
     window.removeEventListener("focus", onFocus);
     unlisten.then((fn) => fn());
@@ -199,6 +205,28 @@ async function startDownload() {
   } catch (e) {
     downloading = false;
     throw e;
+  }
+}
+
+async function selectModel(id: string) {
+  if (!settings || settings.sttModelId === id || downloading || switchingModel)
+    return;
+  switchingModel = true;
+  downloading = true;
+  dlProgress = null;
+  try {
+    await invoke("save_stt_settings", {
+      settings: { ...settings, sttModelId: id, localReady: false },
+    });
+    settings = await invoke<SttSettings>("get_stt_settings");
+    await invoke("download_local_model");
+    settings = await invoke<SttSettings>("get_stt_settings");
+  } catch (e) {
+    settings = await invoke<SttSettings>("get_stt_settings");
+    throw e;
+  } finally {
+    downloading = false;
+    switchingModel = false;
   }
 }
 </script>
@@ -289,7 +317,7 @@ async function startDownload() {
               <div class="flex items-start gap-3">
                 <div class="mt-0.5 shrink-0">
                   {#if screenRecordingGranted}
-                    <MonitorCheck
+                    <Monitor
                       size={16}
                       class="text-ink-secondary transition-colors group-hover/item:text-brand-cream"
                     />
@@ -405,14 +433,39 @@ async function startDownload() {
           bind:isOpen={openStt}
         >
           <div class="flex flex-col divide-y divide-brand-cream/6">
-            <!-- Riga Modello -->
-            <div class="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <!-- Riga Modello: scelta preset int8 / fp32 -->
+            <div class="flex flex-col gap-1.5 px-3.5 py-2.5">
               <span class="text-xs text-ink-secondary">Modello:</span>
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-medium text-ink-primary">
-                  Parakeet TDT 0.6B v3 (~670 MB)
-                </span>
-                {#if settings?.localReady && !downloading}
+              <div class="flex flex-col gap-1">
+                {#each presets as preset (preset.id)}
+                  <button
+                    type="button"
+                    class={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+                      settings?.sttModelId === preset.id
+                        ? "border-brand-cream/25 bg-brand-cream/[0.06]"
+                        : "border-brand-cream/8 bg-brand-cream/[0.02] hover:border-brand-cream/20"
+                    } ${downloading || switchingModel ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                    onclick={() => selectModel(preset.id)}
+                    disabled={downloading || switchingModel}
+                  >
+                    <span
+                      class={`text-xs ${settings?.sttModelId === preset.id ? "font-medium text-ink-primary" : "text-ink-secondary"}`}
+                    >
+                      {preset.label}
+                    </span>
+                    {#if settings?.sttModelId === preset.id}
+                      <Check size={13} class="shrink-0 text-ok" />
+                    {/if}
+                  </button>
+                {/each}
+                {#if switchingModel}
+                  <span class="text-2xs text-warn">
+                    Cambio modello: scarico la nuova variante e rimuovo la precedente...
+                  </span>
+                {/if}
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                {#if settings?.localReady && !downloading && !switchingModel}
                   <Button
                     variant="icon"
                     class="size-7 text-ink-secondary hover:text-ink-primary"

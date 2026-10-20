@@ -11,6 +11,84 @@ Formato:
 **Prossimi passi:** ...
 ```
 
+## 2026-10-20 15-40 — Rimossa la modalità ridotta (edge drawer / mini bar)
+
+**Obiettivo:** eliminare la visualizzazione mini a bordo schermo (linguetta edge drawer con il suo pulsante REC), su richiesta: l'unico modo di avviare una registrazione resta il REC della dashboard.
+
+**Fatto:**
+- Frontend: eliminato `CompactStrip.svelte`; rimossi stato `isCompact` e `setCompactMode` da `session.svelte.ts`, bottone `PanelRightClose` e la relativa branch/Classi `compact-mode` da `App.svelte`, stili `compact-mode` (sfondo trasparente) da `App.css`.
+- Backend: da `commands/window.rs` rimossi `set_compact_mode`/`set_compact_hover`/`set_compact_y`/`save_compact_y`/`get_compact_position` con `WindowModeState`/`SavedWindowState` e le costanti di size; rimosso campo `compactY` da `SttSettings` (`mod.rs`); deregistrati i comandi e il manage dello state in `lib.rs`. Restano `set_dock_visible`/`show_dashboard`/`hide_dashboard` e la tray icon.
+- Doc: rimosse le sezioni dedicate da `docs/architecture.md` e `docs/reference.md`, aggiornato `README.md`.
+
+**Decisioni:**
+- Tray icon (Impostazioni / Esci) e gestione dinamica del Dock restano: era la parte "sempre attiva" utile. Toltà solo la mini-barra a bordo schermo con la sua azione REC.
+- `transparent: true` / `macOSPrivateApi` in `tauri.conf.json` lasciati intatti: non necessari ma innocui con lo sfondo solido, evitiamo cambi di config non richiesti.
+- Campo `compactY` rimosso dallo struct; `settings.json` vecchi che lo contengono restano validi (serde ignora i campi sconosciuti).
+
+**Prossimi passi:** nessuno, chiuso.
+
+## 2026-10-20 15-10 — Trascrizione-first: preset modello int8/fp32 e ASR input ottimizzato
+
+**Obiettivo:** far trascrivere le call con la stessa precisione di Handy (stesso modello Parakeet v3, input diverso). Tre leve decise con l'utente: input ASR senza gain, scelta di precisione int8/fp32, chunking sui silenzi.
+
+**Fatto:**
+- **Preset modello** (`stt.rs`, `mod.rs`): tabella `STT_PRESETS` (int8 ~671MB con dir storica, fp32 ~2.55GB con `encoder-model.onnx.data`), `sttModelId` in settings (serde default int8), `local_parakeet_dir`/`is_stt_model_ready` per preset, `download_local_model` sostituisce la dir del preset precedente e azzera la cache del motore, nuovo comando `get_stt_presets` per la UI.
+- **Input ASR adattivo** (`recording.rs`, `audio.rs`): `channels_correlated` confronta gli inviluppi RMS mic/sistema (frame 50ms, lag ±500ms) per distinguere cuffie da altoparlanti. Con cuffie il canale Tu trascrive il mic nudo (zero processing); con altoparlanti il mic AEC-only (il leakage va rimosso, altrimenti le parole dell'altro finirebbero nel testo Tu). Il canale Altri è audio digitale pulito e va al modello com'è. Il segnale mic ottimizzato viene salvato come `mic_asr.wav` (mono 16k, senza gain): `run_transcription` lo preferisce quando esiste, con fallback alla catena storica per i WAV vecchi.
+- **Gain solo sull'ascolto**: `balance_speech_levels`/`normalize_speech` restano sul WAV stereo salvato ma non toccano più l'input ASR (prima c'era un doppio AGC: GainController2 di WebRTC + il nostro boost fino a +20dB).
+- **Chunking sui silenzi** (`stt.rs`): i blocchi da ~120s si spezzano nel frame più silenzioso di una finestra ±5s, niente più tagli a metà parola.
+- **UI**: radio preset in `SettingsPanel` (download immediato al cambio) e due card in `Onboarding` (Consigliato pre-selezionato); `sttModelId` esposto in `types.ts`.
+
+**Decisioni:**
+- Il sistema audio resta registrato (l'utente registra call) e la diarizzazione Tu/Altri resta: la semplificazione non tocca il prodotto.
+- AEC mantenuto solo quando serve davvero (leakage rilevato): con cuffie era processing gratuito che degradava la voce.
+- Nessun URL custom per il modello: solo preset curati, scelto con l'utente.
+- fp32 nel repo istupakov usa pesi esterni `.data`: se onnxruntime non li risolve, il preset si ritira (rischio monitorato).
+
+**Prossimi passi:** smoke test record→transcribe su `tauri dev` (cuffie e altoparlanti), switch int8→fp32 con trascrizione reale, `fresh-install` per l'onboarding.
+
+## 2026-10-20 14-45 — Fix qualità trascrizione: resample anti-alias nel path mic
+
+**Obiettivo:** chiudere la diagnostica "il modello sembra più stupido": il test TTS a 48kHz (`say` + esempio `transcribe_wav`) ha confermato l'aliasing del resample lineare — sullo stesso audio il testo lineare conteneva errori ("dotte", "resempling") che con il passa-basso anti-alias spariscono.
+
+**Fatto:**
+- `recorder/audio.rs`: `resample_linear` sostituita da `resample` = FIR passa-basso (Hamming 63 tap, cutoff 0.45 × Nyquist destinazione) + interpolazione lineare. In upsample il filtro viene saltato. Call site aggiornati: mic in `stop_recording`, import file, resample in `run_transcription` per WAV non-16k.
+- Verifica: `cargo check` verde; il confronto quantitativo è nello screenshot dei due testi del DEVLOG precedente (lineare con 2 errori di parola, anti-alias zero).
+
+**Decisioni:**
+- Filtro FIR scritto in casa invece di `rubato`: l'implementazione è già validata empiricamente dalla diagnostica, evita una dipendenza e le sue API stateful su un uso batch.
+- Il filtro gira solo in downsample: in upsample l'interpolazione lineare è sufficiente (nessun aliasing possibile).
+
+**Prossimi passi:** ripetere la registrazione reale con l'app installata aggiornata e confrontare la trascrizione con Handy; se restano differenze, resta in coda il preset fp32 (quantizzazione).
+
+## 2026-10-20 14-30 — Diagnostica qualità trascrizione: mic raw + esempio A/B
+
+**Obiettivo:** spiegare perché lo stesso Parakeet TDT v3 in Handy riconosce meglio. Fase 1 del piano: misurare se la pipeline audio di Earwig degrada l'input prima che arrivi al modello.
+
+**Fatto:**
+- `stop_recording` salva anche `mic_raw.wav` nella cartella della registrazione: mic f32 al sample rate nativo del device (48kHz tipico), prima di downmix/resample/AEC/balance. File di diagnostica, da rimuovere o nascondere dietro flag a indagine chiusa.
+- Nuovo esempio `src-tauri/examples/transcribe_wav.rs`: trascrive un WAV arbitrario con `parakeet-rs` fuori dall'app. Su input non-16k stampa due trascrizioni: resample lineare (identico all'app) e resample con FIR passa-basso anti-alias (63 tap Hamming) prima della decimazione. Stereo: trascrive L (mic) e R (sistema) separatamente come l'app.
+- Uso: `cargo run --example transcribe_wav -- <wav> [model_dir]`, model_dir default `~/Library/Application Support/com.vincenzomars.earwig/parakeet-tdt-0.6b-v3`.
+
+**Ipotesi in ordine:** (1) resample lineare senza anti-alias aliasa >8kHz nel banda vocale, (2) AEC3 + balance fino a 10× degradano la voce, (3) quantizzazione int8 (il preset fp32 già pianificato la testa), (4) `to_mono` media i canali (-6dB su mono device stereo).
+
+**Prossimi passi:** registrare una frase nota, confrontare i tre testi (Earwig, mic_raw lineare, mic_raw anti-alias) e Handy; fix guidato dall'esito (rubato anti-alias / clamp balance / preset fp32).
+
+## 2026-10-20 13-45 — Linguetta compatta: animazione a padrone unico e Y persistente
+
+**Obiettivo:** chiudere due voci aperte della linguetta ridotta: gli scatti nelle transizioni di hover (due animazioni in parallelo: CSS 200ms contro resize nativo istantaneo via IPC) e la posizione verticale che si azzerava a ogni avvio.
+
+**Fatto:**
+- **Scatti di hover:** il timing è ora governato dal frontend (`CompactStrip.svelte`). Il resize nativo parte a hover-start (crescita verso sinistra, invisibile sullo sfondo trasparente) e il restringimento viene rimandato di ~220ms dopo il mouseleave, quando la transizione CSS di larghezza è già finita; il timer è cancellato dal rientro del cursore, che ri-espande. `transition-all` ristretto a `transition-[width,border-color]` per non animare altro durante lo swap del contenuto.
+- **Persistenza della Y:** campo `compactY` in `settings.json` (`#[serde(default)]`), nuovo comando `save_compact_y` invocato dal frontend a fine drag, `set_compact_mode` carica la Y da settings all'attivazione se in sessione non c'è ancora stato un drag.
+- Documentazione aggiornata (`docs/architecture.md`, `docs/reference.md`) e voci 5 e 6 chiuse in `TODO.md`.
+
+**Decisioni:**
+- Singolo padrone dell'animazione: il CSS nel webview. L'alternativa (animare il resize nativo con NSAnimationContext via objc2) scartata: API non esposta da Tauri e complessità objc2 per lo stesso risultato visivo.
+- Salvataggio a fine drag e non dentro `set_compact_y`: quel comando scorre a ogni pointermove e scrivere il file a ogni frame sarebbe inaccettabile.
+- Il ritardo di restringimento è 220ms (sopra i 200ms della transizione): nel frattempo la finestra resta larga ma trasparente, e un rientro del cursore nella zona trasparente è intenzionalmente un ri-hover.
+
+**Prossimi passi:** verifica visiva su `tauri dev` (hover, ri-hover entro i 220ms, drag seguito da riavvio con Y ripristinata).
+
 ## 2026-10-20 — Centratura orizzontale geometrica ed ottica dell'icona Play in Recorder
 
 **Obiettivo:** Correggere la centratura orizzontale dell'icona Play (filigrana a riposo) nel pulsante REC principale della schermata home (`Recorder.svelte`), eliminando l'offset in eccesso verso destra introdotto in precedenza e bilanciando perfettamente margini e peso visivo.

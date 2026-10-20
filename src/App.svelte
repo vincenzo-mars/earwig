@@ -1,14 +1,12 @@
 <script lang="ts">
 import { listen } from "@tauri-apps/api/event";
 import { replace, router } from "svelte-spa-router";
-import CompactStrip from "./lib/CompactStrip.svelte";
 import Onboarding from "./lib/Onboarding.svelte";
 import Recorder from "./lib/Recorder.svelte";
 import RecordingDetail from "./lib/RecordingDetail.svelte";
 import SettingsPanel from "./lib/SettingsPanel.svelte";
 import SttIndicator from "./lib/SttIndicator.svelte";
 import { servers } from "./lib/stores/servers.svelte";
-import { session } from "./lib/stores/session.svelte";
 
 $effect(() => {
   servers.refreshStt();
@@ -28,18 +26,6 @@ $effect(() => {
   };
 });
 
-$effect(() => {
-  if (typeof document !== "undefined") {
-    if (session.isCompact) {
-      document.documentElement.classList.add("compact-mode");
-      document.body.classList.add("compact-mode");
-    } else {
-      document.documentElement.classList.remove("compact-mode");
-      document.body.classList.remove("compact-mode");
-    }
-  }
-});
-
 const isSettingsOpen = $derived(router.location === "/settings");
 const activeDetailId = $derived.by(() => {
   if (router.location.startsWith("/detail/")) {
@@ -56,8 +42,6 @@ function closeModal() {
 
 {#if !servers.modelReady}
   <Onboarding onContinue={() => servers.refreshStt()} />
-{:else if session.isCompact}
-  <CompactStrip />
 {:else}
 <!-- La schermata base permanente è Recorder (hero REC + lista registrazioni).
      Dettaglio registrazione e impostazioni si aprono come modali sovrapposte

@@ -36,10 +36,26 @@ pub fn to_mono(samples: Vec<f32>, channels: u16) -> Vec<f32> {
 ///
 /// Assume un buffer **mono**: su audio interleaved interpolerebbe fra canali
 /// diversi, quindi va sempre chiamato dopo `to_mono`.
-pub fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+/// Resample con anti-alias: filtro passa-basso FIR (Hamming, 63 tap, cutoff a
+/// 0.45 × Nyquist destinazione) prima della decimazione, poi interpolazione
+/// lineare. Il resample lineare puro ripiega lo spettro sopra Nyquist
+/// destinazione dentro la banda vocale (48k → 16k aliasa 24-8kHz: sibilanti e
+/// fricative corrotte) e degrada l'ASR in modo misurabile: la diagnostica con
+/// l'esempio `transcribe_wav` mostra errori di parole ("dotte", "resempling")
+/// che con il passa-basso spariscono. In upsample il filtro non serve.
+pub fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     if from_rate == to_rate {
         return samples.to_vec();
     }
+    let filtered = if from_rate > to_rate {
+        lowpass(samples, from_rate, to_rate)
+    } else {
+        samples.to_vec()
+    };
+    linear_interp(&filtered, from_rate, to_rate)
+}
+
+fn linear_interp(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     let ratio = from_rate as f64 / to_rate as f64;
     let out_len = (samples.len() as f64 / ratio).round() as usize;
     let mut out = Vec::with_capacity(out_len);
@@ -52,6 +68,46 @@ pub fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32
         out.push(a + (b - a) * frac);
     }
     out
+}
+
+fn lowpass(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+    const TAPS: usize = 63;
+    let cutoff = (from_rate.min(to_rate) as f32) * 0.45;
+    let nyquist = from_rate as f32 / 2.0;
+    let fc = (cutoff / nyquist).clamp(0.01, 0.99);
+    let mid = (TAPS - 1) as f32 / 2.0;
+
+    let mut kernel: Vec<f32> = (0..TAPS)
+        .map(|n| {
+            let x = n as f32 - mid;
+            let sinc = if x.abs() < f32::EPSILON {
+                1.0
+            } else {
+                (std::f32::consts::PI * fc * x).sin() / (std::f32::consts::PI * fc * x)
+            };
+            let hamming =
+                0.54 - 0.46 * (2.0 * std::f32::consts::PI * n as f32 / (TAPS - 1) as f32).cos();
+            sinc * hamming
+        })
+        .collect();
+    let sum: f32 = kernel.iter().sum();
+    for k in &mut kernel {
+        *k /= sum;
+    }
+
+    let half = TAPS / 2;
+    (0..samples.len())
+        .map(|i| {
+            let mut acc = 0.0f32;
+            for k in 0..TAPS {
+                let xi = i as isize + k as isize - half as isize;
+                if xi >= 0 && (xi as usize) < samples.len() {
+                    acc += samples[xi as usize] * kernel[k];
+                }
+            }
+            acc
+        })
+        .collect()
 }
 
 /// Intreccia mic e audio di sistema in un buffer stereo (mic a sinistra, sistema
@@ -94,6 +150,65 @@ pub fn active_speech_rms(samples: &[f32], frame_size: usize) -> f32 {
     let mean_active_energy =
         frame_energies[..active_count].iter().sum::<f32>() / active_count as f32;
     mean_active_energy.sqrt()
+}
+
+/// Rileva il leakage della cassa nel microfono confrontando gli inviluppi RMS
+/// (frame da 50 ms) dei due canali con una ricerca di lag fino a ±500 ms: il
+/// percorso fisico altoparlante → aria → mic introduce un ritardo che la
+/// correlazione massima cattura. Correlazione alta = altoparlanti (il mic ha
+/// bisogno dell'AEC); bassa = cuffie (il mic nudo è l'input migliore per l'ASR).
+pub fn channels_correlated(mic: &[f32], sys: &[f32], sample_rate: u32) -> bool {
+    let frame = (sample_rate as usize / 20).max(1); // 50 ms
+    let envelope = |samples: &[f32]| -> Vec<f32> {
+        samples
+            .chunks(frame)
+            .map(|c| (c.iter().map(|s| s * s).sum::<f32>() / c.len() as f32).sqrt())
+            .collect()
+    };
+    let (mic_env, sys_env) = (envelope(mic), envelope(sys));
+    let n = mic_env.len().min(sys_env.len());
+    if n < 20 {
+        return false;
+    }
+
+    // Sistema silenzioso: nessun leakage possibile, il mic è già pulito.
+    let sys_rms: f32 = sys_env.iter().map(|v| v * v).sum::<f32>() / n as f32;
+    if sys_rms.sqrt() < 0.005 {
+        return false;
+    }
+
+    // ±500 ms = 10 frame da 50 ms, limitato a un quarto della durata per
+    // mantenere abbastanza overlap nella correlazione.
+    let max_lag = 10usize.min(n / 4);
+    let mut best = 0.0f32;
+    for lag in 0..=max_lag {
+        let (a, b) = if lag == 0 {
+            (&mic_env[..], &sys_env[..])
+        } else {
+            (&mic_env[lag..], &sys_env[..n - lag])
+        };
+        let m = a.len();
+        if m < 20 {
+            break;
+        }
+        let mean_a: f32 = a.iter().sum::<f32>() / m as f32;
+        let mean_b: f32 = b.iter().sum::<f32>() / m as f32;
+        let mut cov = 0.0f32;
+        let mut var_a = 0.0f32;
+        let mut var_b = 0.0f32;
+        for i in 0..m {
+            let da = a[i] - mean_a;
+            let db = b[i] - mean_b;
+            cov += da * db;
+            var_a += da * da;
+            var_b += db * db;
+        }
+        if var_a > f32::EPSILON && var_b > f32::EPSILON {
+            let corr = cov / (var_a.sqrt() * var_b.sqrt());
+            best = best.max(corr.abs());
+        }
+    }
+    best > 0.35
 }
 
 /// Normalizza il parlato verso un RMS target (es. 0.10 ~ -20 dBFS), applicando
