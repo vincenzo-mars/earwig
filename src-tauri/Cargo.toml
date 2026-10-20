@@ -1,6 +1,6 @@
 [package]
 name = "earwig"
-version = "0.1.0"
+version = "0.3.0"
 description = "earwig audio recorder"
 authors = ["Vincenzo Mars"]
 edition = "2021"
