@@ -42,6 +42,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Select Xcode 16
+        run: ls -d /Applications/Xcode_16*.app | sort -V | tail -1 | xargs sudo xcode-select -s
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
