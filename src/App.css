@@ -2,17 +2,17 @@
 @import "@fontsource-variable/inter";
 
 @theme {
-  /* Grigi caldi: stessa luminanza dei neutri puri, tinta spostata verso il
-     rosso invece che verso il blu (R > B di 3-6 punti). Se ne aggiungi uno,
-     tienilo sulla stessa tinta o stonerà con il resto. */
-  --color-brand-dark: #1e1c19;
-  --color-brand-darker: #141311;
-  --color-brand-light: #94908a;
-  --color-brand-lighter: #3e3b37;
-  --color-brand-lightest: #4e4a45;
-  --color-brand-cream: #f7f5f1;
-  --color-brand-cream-dim: #e8e4de;
-  --color-brand-ink: #0b0a08;
+  /* Grigi scuri con nota di rosso caldo (poco più scuro): luminanza profonda (~10%),
+     con tinta spostata verso il rosso caldo/ambra scura (Hue ~12-14°, R dominante, G > B)
+     per un effetto ossidiana/carbone caldo sobrio, elegante e accogliente. */
+  --color-brand-dark: #211512;
+  --color-brand-darker: #170f0c;
+  --color-brand-light: #947a72;
+  --color-brand-lighter: #3f2923;
+  --color-brand-lightest: #52362f;
+  --color-brand-cream: #f9f5f3;
+  --color-brand-cream-dim: #ebe3df;
+  --color-brand-ink: #0c0605;
 
   /* Il rosso vive solo nella registrazione (bottone REC, alone, timer): fuori
      di lì l'interfaccia è neutra, così il colore resta un segnale di stato. */
@@ -65,12 +65,8 @@
      testa è l'alta lucidità: dà volume al cerchio senza un gradiente. */
   --shadow-raised: 0 2px 12px rgba(0, 0, 0, 0.3);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --shadow-rec:
-    inset 0 2px 0 rgba(255, 255, 255, 0.14),
-    0 4px 16px color-mix(in srgb, var(--color-rec) 40%, transparent);
-  --shadow-rec-active:
-    inset 0 2px 0 rgba(255, 255, 255, 0.14),
-    0 4px 16px color-mix(in srgb, var(--color-rec-strong) 40%, transparent);
+  --shadow-rec: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-rec-active: 0 4px 16px rgba(0, 0, 0, 0.45);
 
   /* Motion: le durate vivono qui, non inline nel markup. */
   --animate-blink: blink 0.8s ease-in-out infinite;
@@ -82,7 +78,8 @@
 
 @layer base {
   html,
-  body {
+  body,
+  #app {
     margin: 0;
     height: 100%;
     overflow: hidden;
@@ -96,7 +93,18 @@
   }
 
   body {
-    @apply bg-brand-dark text-ink-primary;
+    @apply text-ink-primary;
+  }
+
+  html:not(.compact-mode),
+  body:not(.compact-mode) {
+    @apply bg-brand-dark;
+  }
+
+  html.compact-mode,
+  body.compact-mode,
+  body.compact-mode #app {
+    background-color: transparent;
   }
 
   html {

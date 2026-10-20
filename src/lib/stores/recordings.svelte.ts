@@ -21,8 +21,24 @@ async function load(force = false): Promise<RecordingEntry[]> {
   }
 }
 
+// Se una registrazione è in fase di elaborazione (cancellazione rumore o trascrizione),
+// viene inserita in cima alla lista per comparire subito come voce in caricamento.
+const allEntries = $derived.by(() => {
+  const item = session.processingItem;
+  if (!item) return entries;
+  const existing = entries.some((e) => e.name === item.name);
+  if (existing) return entries;
+  const pendingEntry: RecordingEntry = {
+    name: item.name,
+    folder_path: item.folderPath ?? item.name,
+    transcript: null,
+    error: null,
+  };
+  return [pendingEntry, ...entries];
+});
+
 function byName(name: string): RecordingEntry | undefined {
-  return entries.find((e) => e.name === name);
+  return allEntries.find((e) => e.name === name);
 }
 
 // Rilancio della trascrizione da lista o dettaglio: riusa il lock di
@@ -34,17 +50,25 @@ async function retryTranscription(
   folderPath: string,
 ): Promise<RecordingEntry[]> {
   if (session.locked) return entries;
+  const name = folderPath.split("/").filter(Boolean).pop() ?? "";
+  session.setProcessingItem({
+    name,
+    folderPath,
+    phase: "transcribing",
+  });
   try {
     await session.runTranscription(`${folderPath}/recording.wav`);
   } catch {
     // Esito già sul disco: la load() qui sotto lo rilegge.
+  } finally {
+    session.setProcessingItem(null);
   }
   return load(true);
 }
 
 export const recordings = {
   get all() {
-    return entries;
+    return allEntries;
   },
   get loading() {
     return loading;

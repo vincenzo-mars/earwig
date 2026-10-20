@@ -1,11 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
+import { formatTimestamp, type ProcessingItem } from "../types";
 import { servers } from "./servers.svelte";
 
 let isRecording = $state(false);
+let isStarting = $state(false);
+let isStopping = $state(false);
 let isTranscribing = $state(false);
+let processingItem = $state<ProcessingItem | null>(null);
 let durationMs = $state(0);
 let transcribeMs = $state(0);
 let error = $state<string | null>(null);
+let isCompact = $state(false);
 
 let durationTimer: ReturnType<typeof setInterval> | undefined;
 let transcribeTimer: ReturnType<typeof setInterval> | undefined;
@@ -43,7 +48,7 @@ const recordGateReason = () => {
 // Lock condiviso da REC, import e rilancio: finché è attivo nessun altro
 // flusso di trascrizione può partire. Esposto anche a chi mostra righe
 // disabilitate (lista e dettaglio).
-const locked = () => isRecording || isTranscribing;
+const locked = () => isRecording || isStarting || isStopping || isTranscribing;
 
 // Primitiva usata sia dal flusso REC/import sia dal rilancio in
 // `recordings.svelte.ts`: tiene il lock e il cronometro in un posto solo.
@@ -64,11 +69,8 @@ async function runTranscription(path: string): Promise<void> {
 
 async function startRecording(): Promise<void> {
   error = null;
-  if (locked()) return;
-  if (!canRecord()) {
-    error = recordGateReason();
-    return;
-  }
+  if (locked() || !canRecord()) return;
+  isStarting = true;
   try {
     await invoke("start_recording");
     isRecording = true;
@@ -76,22 +78,56 @@ async function startRecording(): Promise<void> {
       durationMs = ms;
     }, 500);
   } catch (e) {
-    error = String(e);
+    const err = String(e);
+    if (
+      err.includes("Already recording") ||
+      err.includes("Registrazione già in corso")
+    ) {
+      isRecording = true;
+    } else {
+      error = err;
+    }
+  } finally {
+    isStarting = false;
   }
 }
 
 async function stopRecording(): Promise<void> {
-  if (!isRecording) return;
+  if (!isRecording || isStopping) return;
+  const name = formatTimestamp();
+  isStopping = true;
+  isRecording = false;
+  durationTimer = stopTimer(durationTimer);
+  error = null;
+  processingItem = {
+    name,
+    phase: "noise_cancellation",
+  };
   try {
-    const path = await invoke<string>("stop_recording");
-    isRecording = false;
-    durationTimer = stopTimer(durationTimer);
-    if (!path) return;
+    const path = await invoke<string>("stop_recording", { timestamp: name });
+    isStopping = false;
+    if (!path) {
+      processingItem = null;
+      return;
+    }
+    processingItem = {
+      name,
+      folderPath: path,
+      phase: "transcribing",
+    };
     await runTranscription(path);
   } catch (e) {
-    isRecording = false;
-    durationTimer = stopTimer(durationTimer);
-    error = String(e);
+    isStopping = false;
+    processingItem = null;
+    const err = String(e);
+    if (
+      !err.includes("Not recording") &&
+      !err.includes("Nessuna registrazione in corso")
+    ) {
+      error = err;
+    }
+  } finally {
+    processingItem = null;
   }
 }
 
@@ -105,23 +141,59 @@ async function importFile(): Promise<boolean> {
     error = recordGateReason();
     return false;
   }
+  isStarting = true;
+  let path: string | null = null;
   try {
-    const path = await invoke<string | null>("import_audio_file");
-    if (!path) return false;
-    await runTranscription(path);
-    return true;
+    path = await invoke<string | null>("import_audio_file");
   } catch (e) {
     error = String(e);
     return false;
+  } finally {
+    isStarting = false;
+  }
+  if (!path) return false;
+  const name = path.split("/").filter(Boolean).slice(-2, -1)[0] ?? "";
+  processingItem = {
+    name,
+    folderPath: path,
+    phase: "transcribing",
+  };
+  try {
+    await runTranscription(path);
+    return true;
+  } finally {
+    processingItem = null;
+  }
+}
+
+async function setCompactMode(enabled: boolean) {
+  isCompact = enabled;
+  try {
+    await invoke("set_compact_mode", { enabled });
+  } catch (e) {
+    console.error("Failed to toggle compact mode:", e);
+    isCompact = !enabled;
   }
 }
 
 export const session = {
+  get isCompact() {
+    return isCompact;
+  },
   get isRecording() {
     return isRecording;
   },
+  get isStarting() {
+    return isStarting;
+  },
+  get isStopping() {
+    return isStopping;
+  },
   get isTranscribing() {
     return isTranscribing;
+  },
+  get processingItem() {
+    return processingItem;
   },
   get durationMs() {
     return durationMs;
@@ -141,8 +213,12 @@ export const session = {
   get recordGateReason() {
     return recordGateReason();
   },
+  setProcessingItem(item: ProcessingItem | null) {
+    processingItem = item;
+  },
   startRecording,
   stopRecording,
+  setCompactMode,
   importFile,
   runTranscription,
 };

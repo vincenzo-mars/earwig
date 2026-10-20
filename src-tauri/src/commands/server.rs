@@ -125,9 +125,7 @@ pub(crate) async fn port_is_open(port: u16) -> bool {
         .is_ok()
 }
 
-/// Poll a 250ms invece che a 1s: il server apre la porta in frazioni di
-/// secondo dopo il load, e la granularità grossa aggiungeva fino a 1s di
-/// latenza percepita sull'avvio.
+#[allow(dead_code)]
 pub(crate) async fn wait_for_port(port: u16, timeout_secs: u64) -> Result<(), String> {
     for _ in 0..timeout_secs * 4 {
         tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;

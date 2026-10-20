@@ -4,6 +4,7 @@ export interface SttSettings {
   localReady: boolean;
   modelDir: string | null;
   recordingsDir: string | null;
+  transcriptsDir: string | null;
   llmHfRepo: string;
   llmHfFile: string;
   llmSizeBytes: number;
@@ -109,17 +110,34 @@ export interface HfModelDetail {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Diarizzazione "a 2 vie" fatta da whisper sul WAV stereo prodotto da
-// stop_recording: canale sinistro = microfono, destro = audio di sistema.
-// I segmenti ambigui arrivano già normalizzati a null dal backend.
-const SPEAKER_INFO: Record<string, { label: string; color: string }> = {
-  "0": { label: "YOU", color: "#3b82f6" },
-  "1": { label: "THEM", color: "#10b981" },
+// Diarizzazione fisica canali stereo (L = microfono/Tu, R = sistema/Altri).
+// Segmenti mono o ambigui usano il fallback "Voce".
+export interface SpeakerInfo {
+  label: string;
+  color: string;
+  badgeClass: string;
+}
+
+const SPEAKER_INFO: Record<string, SpeakerInfo> = {
+  "0": {
+    label: "Tu",
+    color: "#f87171", // red-400
+    badgeClass: "border-red-500/25 bg-red-500/10 text-red-400",
+  },
+  "1": {
+    label: "Altri",
+    color: "#c084fc", // purple-400
+    badgeClass: "border-purple-500/25 bg-purple-500/10 text-purple-400",
+  },
 };
 
-const UNKNOWN_SPEAKER = { label: "Sconosciuto", color: "#6b7280" };
+const UNKNOWN_SPEAKER: SpeakerInfo = {
+  label: "Voce",
+  color: "#94908a",
+  badgeClass: "border-brand-cream/15 bg-brand-cream/5 text-ink-secondary",
+};
 
-export function speakerInfo(speaker: string): { label: string; color: string } {
+export function speakerInfo(speaker: string): SpeakerInfo {
   return SPEAKER_INFO[speaker] ?? UNKNOWN_SPEAKER;
 }
 
@@ -177,6 +195,69 @@ export function formatSeconds(s: number): string {
 export function formatElapsed(ms: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return formatSeconds(ms / 1000);
+}
+
+// Timestamp formattato per il nome della cartella di registrazione (es. "2026-10-19 17.44.15")
+// Identico al formato prodotto da chrono lato Rust.
+export function formatTimestamp(d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}.${pad(d.getMinutes())}.${pad(d.getSeconds())}`;
+}
+
+const MONTHS_IT = [
+  "Gen",
+  "Feb",
+  "Mar",
+  "Apr",
+  "Mag",
+  "Giu",
+  "Lug",
+  "Ago",
+  "Set",
+  "Ott",
+  "Nov",
+  "Dic",
+];
+
+// Formatta il timestamp di registrazione (es. "2026-10-19 17.44.15") in forma umana leggibile
+// ("Oggi, 17:44", "Ieri, 17:44" o "19 Ott, 17:44").
+export function formatRecordingDate(name: string): string {
+  const match = name.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2})[.:](\d{2})(?:[.:](\d{2}))?/,
+  );
+  if (!match) return name;
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10) - 1;
+  const day = Number.parseInt(match[3], 10);
+  const hours = match[4];
+  const minutes = match[5];
+
+  const recDate = new Date(year, month, day);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (recDate.getTime() === today.getTime()) {
+    return `Oggi, ${hours}:${minutes}`;
+  }
+  if (recDate.getTime() === yesterday.getTime()) {
+    return `Ieri, ${hours}:${minutes}`;
+  }
+  const monthName = MONTHS_IT[month] ?? "";
+  if (year === now.getFullYear()) {
+    return `${day} ${monthName}, ${hours}:${minutes}`;
+  }
+  return `${day} ${monthName} ${year}, ${hours}:${minutes}`;
+}
+
+export type ProcessingPhase = "noise_cancellation" | "transcribing";
+
+export interface ProcessingItem {
+  name: string;
+  folderPath?: string;
+  phase: ProcessingPhase;
 }
 
 export function groupSegments(segments: TranscriptSegment[]) {

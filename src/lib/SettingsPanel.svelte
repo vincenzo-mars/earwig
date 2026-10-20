@@ -1,54 +1,96 @@
 <script lang="ts">
-import { Folder, Mic, MonitorCheck, MonitorX } from "@lucide/svelte";
+import {
+  Check,
+  Download,
+  FileText,
+  Folder,
+  LoaderCircle,
+  Mic,
+  MonitorCheck,
+  MonitorX,
+  Play,
+  Power,
+  RotateCcw,
+  Server,
+  ShieldCheck,
+  Square,
+  Trash2,
+} from "@lucide/svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { pop } from "svelte-spa-router";
+import { pop, router } from "svelte-spa-router";
+import AccordionSection from "./AccordionSection.svelte";
 import Button from "./Button.svelte";
 import DownloadProgressBar from "./DownloadProgressBar.svelte";
-import PageHeader from "./PageHeader.svelte";
-import ServerControls from "./ServerControls.svelte";
+import Modal from "./Modal.svelte";
 import { servers } from "./stores/servers.svelte";
 import { session } from "./stores/session.svelte";
-import type {
-  DownloadProgress,
-  HfGgufFile,
-  HfModelDetail,
-  HfModelSummary,
-  LlmDownloadProgress,
-  SttSettings,
-} from "./types";
+import type { DownloadProgress, SttSettings } from "./types";
 
-// `pop` invece di una rotta fissa: le impostazioni si aprono da qualsiasi
-// schermata (il bottone dell'indicatore è sempre visibile) e chiudendole si
-// deve tornare da dove si è arrivati, non sempre alla registrazione.
-const close = () => pop();
+let { onclose }: { onclose?: () => void } = $props();
+
+const close = () => {
+  if (onclose) {
+    onclose();
+  } else {
+    pop();
+  }
+};
 
 let settings = $state<SttSettings | null>(null);
 let downloading = $state(false);
 let dlProgress = $state<DownloadProgress | null>(null);
-let llmDownloading = $state(false);
-let llmDlProgress = $state<LlmDownloadProgress | null>(null);
 let modelPath = $state<string | null>(null);
 let recordingsDir = $state<string | null>(null);
+let effectiveTranscriptsDir = $state<string | null>(null);
+let microphoneGranted = $state(false);
 let screenRecordingGranted = $state(false);
 let sttLoading = $state(false);
 let sttError = $state<string | null>(null);
-let llmLoading = $state(false);
-let llmError = $state<string | null>(null);
 
-let systemRamGb = $state<number | null>(null);
-let hfQuery = $state("");
-let hfSearching = $state(false);
-let hfSearched = $state(false);
-let hfResults = $state<HfModelSummary[]>([]);
-let expandedRepo = $state<string | null>(null);
-let hfFilesLoading = $state(false);
-let hfFilesGated = $state(false);
-let hfFiles = $state<HfGgufFile[]>([]);
-let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+let openStt = $state(true);
+
+let autostartEnabled = $state(false);
+let autostartLoading = $state(true);
+
+async function checkAutostart() {
+  try {
+    autostartEnabled = await isEnabled();
+  } catch (e) {
+    console.error("Failed to check autostart:", e);
+  } finally {
+    autostartLoading = false;
+  }
+}
+
+async function toggleAutostart() {
+  autostartLoading = true;
+  try {
+    if (autostartEnabled) {
+      await disable();
+      autostartEnabled = false;
+    } else {
+      await enable();
+      autostartEnabled = true;
+    }
+  } catch (err) {
+    console.error("Failed to toggle autostart:", err);
+  } finally {
+    autostartLoading = false;
+  }
+}
 
 let locked = $derived(session.locked);
+
+async function refreshPermissions() {
+  screenRecordingGranted = await invoke<boolean>(
+    "check_screen_recording_permission",
+  );
+  microphoneGranted = await invoke<boolean>("check_microphone_permission");
+}
 
 $effect(() => {
   invoke<SttSettings>("get_stt_settings").then((s) => {
@@ -60,10 +102,17 @@ $effect(() => {
   invoke<string>("get_recordings_dir").then((d) => {
     recordingsDir = d;
   });
-  refreshScreenRecordingStatus();
-  invoke<number>("get_system_memory_gb").then((gb) => {
-    systemRamGb = gb;
+  invoke<string>("get_transcripts_dir").then((t) => {
+    effectiveTranscriptsDir = t;
   });
+  refreshPermissions();
+  checkAutostart();
+
+  const onFocus = () => {
+    refreshPermissions();
+    checkAutostart();
+  };
+  window.addEventListener("focus", onFocus);
 
   const unlisten = listen<DownloadProgress>("download-progress", (e) => {
     dlProgress = e.payload;
@@ -73,30 +122,28 @@ $effect(() => {
     }
   });
 
-  const unlistenLlm = listen<LlmDownloadProgress>(
-    "llm-download-progress",
-    async (e) => {
-      llmDlProgress = e.payload;
-      if (e.payload.step === "done") {
-        llmDownloading = false;
-        // Ricarica da disco invece di settare llmReady in ottimismo: la
-        // verità è sempre il file, stesso motivo per cui get_stt_settings
-        // la ricalcola lato Rust invece di fidarsi del valore persistito.
-        settings = await invoke<SttSettings>("get_stt_settings");
-        await servers.refreshLlm({ attemptStart: false });
-      }
-    },
-  );
-
   return () => {
+    window.removeEventListener("focus", onFocus);
     unlisten.then((fn) => fn());
-    unlistenLlm.then((fn) => fn());
   };
 });
 
-// ── Server STT / LLM ──────────────────────────────────────────────────────────
-// Tutti i comandi server hanno la stessa forma: busy flag, invoke, refresh
-// dello stato in App, errore mostrato nel box di stato.
+let scrolledSection = $state<string | null>(null);
+$effect(() => {
+  const section = router.querystring
+    ? new URLSearchParams(router.querystring).get("section")
+    : null;
+  if (settings && section && scrolledSection !== section) {
+    scrolledSection = section;
+    if (section === "stt-server") openStt = true;
+    setTimeout(() => {
+      const el = document.getElementById(section);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+});
+
+// ── Server STT ───────────────────────────────────────────────────────────────
 
 async function runStt(cmd: string, opts?: { attemptStart?: boolean }) {
   sttLoading = true;
@@ -111,19 +158,6 @@ async function runStt(cmd: string, opts?: { attemptStart?: boolean }) {
   }
 }
 
-async function runLlm(cmd: string) {
-  llmLoading = true;
-  llmError = null;
-  try {
-    await invoke(cmd);
-    await servers.refreshLlm({ attemptStart: false });
-  } catch (e) {
-    llmError = String(e);
-  } finally {
-    llmLoading = false;
-  }
-}
-
 async function handleDeleteModel() {
   await runStt("delete_local_model");
   if (!sttError) {
@@ -132,111 +166,25 @@ async function handleDeleteModel() {
   }
 }
 
-// ── Ricerca modelli Hugging Face ────────────────────────────────────────────────
-
-// Lazy: la prima fetch parte al primo focus del campo, non all'apertura del
-// pannello — chi apre le impostazioni per i permessi non deve costare una
-// chiamata a Hugging Face.
-function initSearch() {
-  if (!hfSearched && !hfSearching) runSearch("instruct");
-}
-
-function scheduleSearch() {
-  clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(
-    () => runSearch(hfQuery.trim() || "instruct"),
-    400,
-  );
-}
-
-async function runSearch(query: string) {
-  hfSearching = true;
-  hfSearched = true;
-  llmError = null;
-  try {
-    hfResults = await invoke<HfModelSummary[]>("search_hf_models", { query });
-  } catch (e) {
-    llmError = String(e);
-  } finally {
-    hfSearching = false;
-  }
-}
-
-async function toggleRepo(id: string) {
-  if (expandedRepo === id) {
-    expandedRepo = null;
-    return;
-  }
-  expandedRepo = id;
-  hfFiles = [];
-  hfFilesGated = false;
-  hfFilesLoading = true;
-  try {
-    const detail = await invoke<HfModelDetail>("get_hf_model_files", {
-      repoId: id,
-    });
-    hfFilesGated = detail.gated;
-    hfFiles = [...detail.files].sort((a, b) => a.size_bytes - b.size_bytes);
-  } catch (e) {
-    llmError = String(e);
-  } finally {
-    hfFilesLoading = false;
-  }
-}
-
-async function selectModel(repo: string, file: HfGgufFile) {
-  if (!settings) return;
-  await invoke("set_llm_model", {
-    repo,
-    file: file.filename,
-    sizeBytes: file.size_bytes,
+async function chooseTranscriptsDir() {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: "Seleziona la cartella per le note Markdown",
   });
-  settings = {
-    ...settings,
-    llmHfRepo: repo,
-    llmHfFile: file.filename,
-    llmSizeBytes: file.size_bytes,
-    llmReady: false,
-  };
-  // Il nuovo modello non è ancora sul disco: App deve saperlo, altrimenti il
-  // CTA "Avvia il server LLM" del dettaglio resta abilitato su un modello
-  // mancante.
-  await servers.refreshLlm({ attemptStart: false });
-}
-
-async function startLlmDownload() {
-  llmDownloading = true;
-  llmDlProgress = null;
-  try {
-    await invoke("download_llm_model");
-  } catch (e) {
-    llmDownloading = false;
-    llmError = String(e);
+  if (selected && typeof selected === "string") {
+    effectiveTranscriptsDir = await invoke<string>("set_transcripts_dir", {
+      path: selected,
+    });
+    settings = await invoke<SttSettings>("get_stt_settings");
   }
 }
 
-function formatGb(bytes: number): string {
-  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
-}
-
-// Euristica, mai bloccante: solo un suggerimento visivo, l'utente può
-// comunque scegliere un file "pesante" se la sua macchina ce la fa.
-function ramBadge(
-  sizeBytes: number,
-): { label: string; className: string } | null {
-  if (systemRamGb == null) return null;
-  const ratio = sizeBytes / 1024 ** 3 / systemRamGb;
-  if (ratio < 0.35)
-    return { label: "Consigliato per la tua RAM", className: "text-ok" };
-  if (ratio < 0.6)
-    return { label: "Ok per la tua RAM", className: "text-warn" };
-  return { label: "Pesante per la tua RAM", className: "text-danger" };
-}
-
-async function refreshScreenRecordingStatus() {
-  screenRecordingGranted = await invoke<boolean>(
-    "check_screen_recording_permission",
-  );
+async function resetTranscriptsDir() {
+  effectiveTranscriptsDir = await invoke<string>("set_transcripts_dir", {
+    path: null,
+  });
+  settings = await invoke<SttSettings>("get_stt_settings");
 }
 
 function openPermissionSettings(pane: "microphone" | "screen-recording") {
@@ -255,286 +203,367 @@ async function startDownload() {
 }
 </script>
 
-{#snippet pathBox(label: string, value: string)}
-  <div
-    class="flex flex-col gap-1 rounded-lg border border-brand-cream/10 bg-brand-dark/50 px-2.5 py-2"
-  >
-    <span
-      class="text-2xs font-semibold tracking-wider text-ink-faint uppercase"
-      >{label}</span
-    >
-    <p class="m-0 font-mono text-2xs break-all text-ink-secondary">
-      {value}
-    </p>
-  </div>
-{/snippet}
-
-<div class="flex h-full w-full flex-col">
-  <PageHeader title="Impostazioni" onBack={close} />
-
-  <div class="flex-1 overflow-y-auto px-6 pt-5 pb-18 text-ink-primary">
+<Modal title="Impostazioni" onclose={close} maxWidth="max-w-xl">
+  <div class="flex-1 overflow-y-auto p-4 sm:p-6 text-ink-primary">
     {#if settings}
-      <!-- Le due colonne (core e LLM) si allargano con la finestra fino a un
-           tetto: oltre, si stirerebbero lasciando una voragine in mezzo. Una
-           terza colonna non c'è, i gruppi sono due. -->
-      <div
-        class="mx-auto grid w-full max-w-400 grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 md:items-start"
-      >
-      <div class="flex flex-col gap-5">
-        <div class="flex flex-col gap-3">
-          <span class="text-xs font-semibold text-ink-primary"
-            >Permessi</span
-          >
-
-          <div class="flex flex-col">
-            <button
-              type="button"
-              class="flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-brand-dark/50 cursor-pointer"
-              onclick={() => openPermissionSettings("microphone")}
-            >
-              <Mic size={16} class="mt-0.5 shrink-0 text-ink-secondary" />
-              <div class="flex flex-col gap-0.5">
-                <span class="text-xs font-medium text-ink-primary"
-                  >Microfono</span
-                >
-                <p
-                  class="m-0 text-2xs leading-relaxed text-ink-muted"
-                >
-                  Necessario per registrare la tua voce.
-                </p>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              class="flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-brand-dark/50 cursor-pointer"
-              onclick={() => openPermissionSettings("screen-recording")}
-            >
-              {#if screenRecordingGranted}
-                <MonitorCheck
-                  size={16}
-                  class="mt-0.5 shrink-0 text-ok"
-                />
-              {:else}
-                <MonitorX
-                  size={16}
-                  class="mt-0.5 shrink-0 text-ink-secondary"
-                />
-              {/if}
-              <div class="flex flex-col gap-0.5">
-                <span class="text-xs font-medium text-ink-primary"
-                  >Cattura audio sistema</span
-                >
-                <p
-                  class="m-0 text-2xs leading-relaxed text-ink-muted"
-                >
-                  Necessaria per catturare l'audio di sistema (richiesta da
-                  ScreenCaptureKit).
-                </p>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-ink-primary"
-              >Modello Whisper</span
-            >
-
-            {#if modelPath}
-              <button
-                class="p-2 cursor-pointer font-semibold text-brand-light transition hover:text-ink-primary"
-                onclick={() => revealItemInDir(modelPath!.slice(0, modelPath!.lastIndexOf("/")))}><Folder size={20} /></button
-              >
-            {/if}
-          </div>
-
-          {#if settings?.localReady}
-            <p class="m-0 text-xs font-medium text-ok">
-              Modello installato e pronto.
-            </p>
-          {:else}
-            <p class="m-0 text-xs leading-relaxed text-ink-secondary">
-              Scarica il modello Whisper large-v3-turbo (~1.5 GB). Necessario
-              solo al primo avvio.
-            </p>
-          {/if}
-
-          {#if modelPath}
-            {@render pathBox("Percorso", modelPath)}
-          {/if}
-
-          {#if downloading && dlProgress}
-            <DownloadProgressBar progress={dlProgress} />
-          {/if}
-
-          <Button
-            variant="solid"
-            class="px-4 py-2.5 text-sm"
-            onclick={startDownload}
-            disabled={downloading}
-          >
-            {downloading
-              ? "Download in corso..."
-              : settings?.localReady
-                ? "Scarica di nuovo"
-                : "Scarica"}
-          </Button>
-        </div>
-
-        <ServerControls
-          title="Server STT"
-          status={servers.sttStatus}
-          error={sttError}
-          loading={sttLoading}
-          {locked}
-          dangerLabel="Elimina modello"
-          onStart={() => runStt("start_stt_server")}
-          onRestart={() => runStt("restart_stt_server")}
-          onStop={() => runStt("stop_stt_server", { attemptStart: false })}
-          onDanger={handleDeleteModel}
-        />
-
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-ink-primary"
-              >Cartella registrazioni</span
-            >
-
-            {#if recordingsDir}
-              <button
-                class="p-2 cursor-pointer font-semibold text-brand-light transition hover:text-ink-primary"
-                onclick={() => revealItemInDir(recordingsDir!)}><Folder size={20} /></button
-              >
-            {/if}
-          </div>
-
-          {#if recordingsDir}
-            {@render pathBox("Percorso", recordingsDir)}
-          {/if}
-        </div>
-      </div>
-
-      <div class="flex flex-col gap-5">
-        <div class="flex flex-col gap-1.5">
-          <span class="text-xs font-semibold text-ink-primary">Modello LLM</span>
-          <p class="m-0 text-2xs leading-relaxed text-ink-muted">
-            Per il riassunto e la chat sulle trascrizioni. Opzionale: nulla si blocca se non lo scarichi.
-          </p>
-
-          {#if systemRamGb != null}
-            <p class="m-0 text-2xs text-ink-faint">RAM rilevata: {systemRamGb.toFixed(1)} GB</p>
-          {/if}
-
-          {#if settings?.llmHfRepo && settings?.llmHfFile}
-            {@render pathBox(
-              "Selezionato",
-              `${settings.llmHfRepo} · ${settings.llmHfFile}`,
-            )}
-
-            {#if llmDownloading && llmDlProgress}
-              <DownloadProgressBar progress={llmDlProgress} />
-            {/if}
-
-            <Button
-              variant="solid"
-              class="px-4 py-2.5 text-sm"
-              onclick={startLlmDownload}
-              disabled={llmDownloading}
-            >
-              {llmDownloading
-                ? "Download in corso..."
-                : settings?.llmReady
-                  ? `Scarica di nuovo (${formatGb(settings.llmSizeBytes)})`
-                  : `Scarica modello (${formatGb(settings.llmSizeBytes)})`}
-            </Button>
-          {/if}
-
-          <input
-            type="text"
-            class="rounded-lg border border-brand-cream/15 bg-brand-dark/50 px-2.5 py-1.5 text-xs text-ink-primary placeholder:text-ink-faint focus:outline-none focus:border-brand-light/70 focus:ring-2 focus:ring-brand-light/40"
-            placeholder="Cerca un modello GGUF su Hugging Face..."
-            bind:value={hfQuery}
-            onfocus={initSearch}
-            oninput={scheduleSearch}
-          />
-
-          <div class="flex max-h-[46vh] flex-col gap-1 overflow-y-auto">
-            {#if hfSearching}
-              <p class="m-0 text-xs text-ink-muted">Ricerca in corso...</p>
-            {:else if !hfSearched}
-              <p class="m-0 text-xs text-ink-muted">
-                Clicca sul campo di ricerca per vedere i modelli più scaricati.
+      <div class="mx-auto flex w-full max-w-xl flex-col gap-3">
+        <!-- 0. Avvio di sistema -->
+        <AccordionSection title="Avvio di sistema" icon={Power}>
+          <div class="flex items-center justify-between gap-3 px-3.5 py-3">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-xs font-semibold text-ink-primary">
+                Esegui in background all'avvio del Mac
+              </span>
+              <p class="m-0 text-2xs leading-relaxed text-ink-muted">
+                Earwig si avvia silenziosamente nella barra dei menu in alto a destra, senza occupare il Dock.
               </p>
-            {:else if hfResults.length === 0}
-              <p class="m-0 text-xs text-ink-muted">Nessun risultato.</p>
-            {:else}
-              {#each hfResults as result (result.id)}
-                <div class="rounded-lg border border-brand-cream/10 bg-brand-dark/50 px-2.5 py-1.5">
-                  <button
-                    type="button"
-                    class="flex w-full cursor-pointer items-center justify-between gap-2 border-none bg-transparent p-0 text-left"
-                    onclick={() => toggleRepo(result.id)}
-                  >
-                    <span class="truncate text-xs font-medium text-ink-primary">{result.id}</span>
-                    <span class="shrink-0 text-2xs text-ink-faint">
-                      {result.license ?? "?"} · {result.downloads.toLocaleString()} dl
-                    </span>
-                  </button>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-label="Esegui in background all'avvio del Mac"
+              title="Esegui in background all'avvio del Mac"
+              aria-checked={autostartEnabled}
+              disabled={autostartLoading}
+              onclick={toggleAutostart}
+              class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 {autostartEnabled ? 'bg-brand-red' : 'bg-brand-cream/15'}"
+            >
+              <span
+                class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-brand-cream shadow-sm ring-0 transition duration-200 ease-in-out {autostartEnabled ? 'translate-x-4' : 'translate-x-0'}"
+              ></span>
+            </button>
+          </div>
+        </AccordionSection>
 
-                  {#if expandedRepo === result.id}
-                    <div class="mt-1.5 flex flex-col gap-1 border-t border-brand-cream/10 pt-1.5">
-                      {#if hfFilesLoading}
-                        <p class="m-0 text-2xs text-ink-muted">Carico i file...</p>
-                      {:else if hfFilesGated}
-                        <p class="m-0 text-2xs text-warn">
-                          🔒 Richiede autenticazione Hugging Face: non supportato.
-                        </p>
-                      {:else if hfFiles.length === 0}
-                        <p class="m-0 text-2xs text-ink-muted">Nessun file GGUF trovato.</p>
-                      {:else}
-                        {#each hfFiles as file (file.filename)}
-                          {@const badge = ramBadge(file.size_bytes)}
-                          <button
-                            type="button"
-                            class="flex cursor-pointer items-center justify-between gap-2 rounded-md border-none bg-transparent px-1.5 py-1 text-left transition hover:bg-brand-cream/5"
-                            onclick={() => selectModel(result.id, file)}
-                          >
-                            <span class="truncate text-2xs text-ink-secondary">{file.filename}</span>
-                            <span class="shrink-0 text-right text-2xs">
-                              <span class="text-ink-muted">{formatGb(file.size_bytes)}</span>
-                              {#if badge}
-                                <span class={`ml-1 ${badge.className}`}>· {badge.label}</span>
-                              {/if}
-                            </span>
-                          </button>
-                        {/each}
-                      {/if}
-                    </div>
+        <!-- 1. Permessi -->
+        <AccordionSection title="Permessi" icon={ShieldCheck}>
+          <div class="flex flex-col divide-y divide-brand-cream/6">
+            <button
+              type="button"
+              class="group/item flex w-full items-start justify-between gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-brand-cream/[0.04] cursor-pointer"
+              onclick={() => openPermissionSettings("microphone")}
+              title="Clicca per aprire le preferenze di sistema per il microfono"
+            >
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 shrink-0">
+                  <Mic
+                    size={16}
+                    class="text-ink-secondary transition-colors group-hover/item:text-brand-cream"
+                  />
+                </div>
+                <div class="flex flex-col gap-0.5">
+                  <span
+                    class="text-xs font-semibold text-ink-primary group-hover/item:text-brand-cream"
+                  >
+                    Microfono
+                  </span>
+                  <p class="m-0 text-2xs leading-relaxed text-ink-muted">
+                    Necessario per registrare la tua voce.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex shrink-0 items-center gap-1.5 pt-0.5">
+                {#if microphoneGranted}
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border border-ok/25 bg-ok/10 px-2 py-0.5 text-2xs font-medium text-ok"
+                  >
+                    <Check size={11} /> Concesso
+                  </span>
+                {:else}
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border border-brand-cream/20 bg-brand-cream/5 px-2 py-0.5 text-2xs font-medium text-ink-muted"
+                  >
+                    Non concesso
+                  </span>
+                {/if}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="group/item flex w-full items-start justify-between gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-brand-cream/[0.04] cursor-pointer"
+              onclick={() => openPermissionSettings("screen-recording")}
+              title="Clicca per aprire le preferenze di sistema per la cattura audio sistema"
+            >
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 shrink-0">
+                  {#if screenRecordingGranted}
+                    <MonitorCheck
+                      size={16}
+                      class="text-ink-secondary transition-colors group-hover/item:text-brand-cream"
+                    />
+                  {:else}
+                    <MonitorX
+                      size={16}
+                      class="text-ink-secondary transition-colors group-hover/item:text-brand-cream"
+                    />
                   {/if}
                 </div>
-              {/each}
+                <div class="flex flex-col gap-0.5">
+                  <span
+                    class="text-xs font-semibold text-ink-primary group-hover/item:text-brand-cream"
+                  >
+                    Cattura audio sistema
+                  </span>
+                  <p class="m-0 text-2xs leading-relaxed text-ink-muted">
+                    Necessaria per catturare l'audio di sistema (richiesta da ScreenCaptureKit).
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex shrink-0 items-center gap-1.5 pt-0.5">
+                {#if screenRecordingGranted}
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border border-ok/25 bg-ok/10 px-2 py-0.5 text-2xs font-medium text-ok"
+                  >
+                    <Check size={11} /> Concesso
+                  </span>
+                {:else}
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border border-brand-cream/20 bg-brand-cream/5 px-2 py-0.5 text-2xs font-medium text-ink-muted"
+                  >
+                    Non concesso
+                  </span>
+                {/if}
+              </div>
+            </button>
+          </div>
+        </AccordionSection>
+
+        <!-- 2. Cartella registrazioni -->
+        <AccordionSection title="Cartella registrazioni" icon={Folder}>
+          {#if recordingsDir}
+            <div class="flex items-center justify-between gap-3 px-3.5 py-2.5">
+              <span class="shrink-0 text-xs text-ink-secondary">Percorso:</span>
+              <button
+                type="button"
+                class="min-w-0 flex-1 truncate text-left font-mono text-2xs text-ink-muted transition-all duration-150 rounded-md border border-brand-cream/8 bg-brand-cream/[0.03] px-2.5 py-1.5 hover:border-brand-cream/25 hover:bg-brand-cream/10 hover:text-ink-primary active:scale-[0.99] cursor-pointer"
+                onclick={() => revealItemInDir(recordingsDir!)}
+                title="Apri nel Finder"
+              >
+                <span class="block truncate">{recordingsDir}</span>
+              </button>
+            </div>
+          {/if}
+        </AccordionSection>
+
+        <!-- 3. Note Markdown -->
+        <AccordionSection title="Note Markdown" icon={FileText}>
+          <div class="flex flex-col gap-2.5 px-3.5 py-3">
+            <p class="m-0 text-2xs text-ink-secondary leading-relaxed">
+              Le trascrizioni vengono esportate come note <code>.md</code> con frontmatter YAML.
+              Oltre a restare nella cartella della registrazione, puoi salvarle in una cartella a piacere.
+            </p>
+
+            <div class="flex items-center justify-between gap-3">
+              <span class="shrink-0 text-xs text-ink-secondary">Destinazione:</span>
+              <button
+                type="button"
+                class="min-w-0 flex-1 truncate text-left font-mono text-2xs text-ink-muted transition-all duration-150 rounded-md border border-brand-cream/8 bg-brand-cream/[0.03] px-2.5 py-1.5 hover:border-brand-cream/25 hover:bg-brand-cream/10 hover:text-ink-primary active:scale-[0.99] cursor-pointer"
+                onclick={() => effectiveTranscriptsDir && revealItemInDir(effectiveTranscriptsDir)}
+                title="Apri nel Finder"
+              >
+                <span class="block truncate">
+                  {settings.transcriptsDir ?? `${effectiveTranscriptsDir ?? recordingsDir} (Predefinita)`}
+                </span>
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              {#if settings.transcriptsDir}
+                <button
+                  type="button"
+                  class="text-2xs text-ink-faint hover:text-ink-primary underline cursor-pointer border-none bg-transparent p-0"
+                  onclick={resetTranscriptsDir}
+                >
+                  Ripristina predefinita
+                </button>
+              {:else}
+                <span class="text-2xs text-ink-faint">
+                  Salvataggio nella cartella di ogni registrazione
+                </span>
+              {/if}
+
+              <Button
+                variant="ghost"
+                class="h-7 px-2.5 text-2xs"
+                onclick={chooseTranscriptsDir}
+              >
+                {settings.transcriptsDir ? "Cambia cartella" : "Scegli cartella"}
+              </Button>
+            </div>
+          </div>
+        </AccordionSection>
+
+        <!-- 4. Server STT (Modello e Motore unificati) -->
+        <AccordionSection
+          id="stt-server"
+          class="scroll-mt-4"
+          title="Server STT"
+          icon={Server}
+          bind:isOpen={openStt}
+        >
+          <div class="flex flex-col divide-y divide-brand-cream/6">
+            <!-- Riga Modello -->
+            <div class="flex items-center justify-between gap-3 px-3.5 py-2.5">
+              <span class="text-xs text-ink-secondary">Modello:</span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-medium text-ink-primary">
+                  Parakeet TDT 0.6B v3 (~670 MB)
+                </span>
+                {#if settings?.localReady && !downloading}
+                  <Button
+                    variant="icon"
+                    class="size-7 text-ink-secondary hover:text-ink-primary"
+                    onclick={startDownload}
+                    disabled={downloading}
+                    title="Scarica di nuovo"
+                    aria-label="Scarica di nuovo"
+                  >
+                    <RotateCcw size={13} />
+                  </Button>
+                {/if}
+              </div>
+            </div>
+
+            <!-- Riga Stato e Controlli -->
+            <div class="flex items-center justify-between gap-3 px-3.5 py-2.5">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-ink-secondary">Stato:</span>
+                <div class="flex items-center gap-1.5">
+                  <span
+                    class={`size-2 shrink-0 rounded-full ${
+                      downloading
+                        ? "bg-warn animate-blink"
+                        : servers.sttStatus === "running"
+                          ? "bg-ok"
+                          : servers.sttStatus === "error"
+                            ? "bg-danger"
+                            : "bg-brand-light"
+                    }`}
+                  ></span>
+                  <span
+                    class={`text-xs font-medium ${
+                      downloading
+                        ? "text-warn"
+                        : servers.sttStatus === "running"
+                          ? "text-ok"
+                          : servers.sttStatus === "error"
+                            ? "text-danger"
+                            : "text-ink-muted"
+                    }`}
+                  >
+                    {#if downloading}
+                      Download in corso... {dlProgress?.pct ?? 0}%
+                    {:else if servers.sttStatus === "running"}
+                      Attivo
+                    {:else if !settings?.localReady}
+                      Non scaricato
+                    {:else}
+                      Fermo
+                    {/if}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Toolbar controlli -->
+              <div class="flex items-center gap-1">
+                {#if !settings?.localReady || downloading}
+                  <Button
+                    variant="icon"
+                    class="size-7 text-ink-secondary hover:text-ink-primary"
+                    onclick={startDownload}
+                    disabled={downloading}
+                    title={downloading ? "Download in corso..." : "Scarica modello"}
+                    aria-label={downloading ? "Download in corso..." : "Scarica modello"}
+                  >
+                    {#if downloading}
+                      <LoaderCircle size={14} class="animate-spin text-ink-primary" />
+                    {:else}
+                      <Download size={13} />
+                    {/if}
+                  </Button>
+                {:else}
+                  <Button
+                    variant="icon"
+                    class="size-7 text-ink-secondary hover:text-ink-primary"
+                    onclick={() => runStt("start_stt_server")}
+                    disabled={sttLoading || locked || servers.sttStatus === "running"}
+                    title="Avvia server"
+                    aria-label="Avvia server"
+                  >
+                    <Play size={13} fill="currentColor" class="translate-x-px" />
+                  </Button>
+
+                  <Button
+                    variant="icon"
+                    class="size-7 text-ink-secondary hover:text-ink-primary"
+                    onclick={() => runStt("restart_stt_server")}
+                    disabled={sttLoading || locked}
+                    title="Riavvia server"
+                    aria-label="Riavvia server"
+                  >
+                    <RotateCcw size={13} />
+                  </Button>
+
+                  <Button
+                    variant="icon"
+                    class="size-7 text-ink-secondary hover:text-ink-primary"
+                    onclick={() => runStt("stop_stt_server", { attemptStart: false })}
+                    disabled={sttLoading || locked || servers.sttStatus === "stopped"}
+                    title="Ferma server"
+                    aria-label="Ferma server"
+                  >
+                    <Square size={13} fill="currentColor" />
+                  </Button>
+
+                  <Button
+                    variant="icon"
+                    class="size-7 text-danger hover:border-danger/30 hover:bg-danger/10 hover:text-danger"
+                    onclick={handleDeleteModel}
+                    disabled={sttLoading || locked}
+                    title="Elimina modello"
+                    aria-label="Elimina modello"
+                  >
+                    <Trash2 size={13} />
+                  </Button>
+                {/if}
+              </div>
+            </div>
+
+            <!-- Riga Percorso -->
+            {#if modelPath}
+              <div class="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                <span class="shrink-0 text-xs text-ink-secondary">Percorso:</span>
+                <button
+                  type="button"
+                  class="min-w-0 flex-1 truncate text-left font-mono text-2xs text-ink-muted transition-all duration-150 rounded-md border border-brand-cream/8 bg-brand-cream/[0.03] px-2.5 py-1.5 hover:border-brand-cream/25 hover:bg-brand-cream/10 hover:text-ink-primary active:scale-[0.99] cursor-pointer"
+                  onclick={() =>
+                    revealItemInDir(
+                      modelPath!.slice(0, modelPath!.lastIndexOf("/")),
+                    )}
+                  title="Apri nel Finder"
+                >
+                  <span class="block truncate">{modelPath}</span>
+                </button>
+              </div>
             {/if}
           </div>
-        </div>
 
-        <ServerControls
-          title="Server LLM"
-          status={servers.llmStatus}
-          error={llmError}
-          hint={settings?.llmReady ? null : "Scarica prima il modello."}
-          loading={llmLoading}
-          {locked}
-          canStart={settings?.llmReady ?? false}
-          dangerLabel="Elimina modelli scaricati"
-          onStart={() => runLlm("start_llm_server")}
-          onRestart={() => runLlm("restart_llm_server")}
-          onStop={() => runLlm("stop_llm_server")}
-          onDanger={() => runLlm("clear_llm_cache")}
-        />
-      </div>
+          {#if downloading && dlProgress}
+            <div class="px-3.5 pb-3">
+              <DownloadProgressBar progress={dlProgress} />
+            </div>
+          {/if}
+
+          {#if sttError}
+            <div class="px-3.5 pb-2.5">
+              <p class="m-0 text-2xs text-danger">{sttError}</p>
+            </div>
+          {/if}
+        </AccordionSection>
       </div>
     {/if}
   </div>
-</div>
+</Modal>

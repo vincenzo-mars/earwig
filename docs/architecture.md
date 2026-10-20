@@ -29,8 +29,12 @@ mic_native_rate → 16kHz             │  sys arriva già a TARGET_SAMPLE_RATE
         [aec::cancel_echo()]           solo se sys è attivo e non vuoto
         toglie dal mic l'audio delle
         casse rientrato dal microfono
+        (WebRTC AEC3 + NS + HPF + AGC2)
                │
                ▼
+        [audio::balance_speech_levels()] pareggia il volume attivo del mic
+               │                       all'audio di sistema (o target speech)
+               ▼                       evitando squilibri e allucinazioni
         [audio::interleave_stereo()]   mic → canale L, sistema → canale R
                │                       (senza audio di sistema resta mono)
                ▼
@@ -40,13 +44,10 @@ mic_native_rate → 16kHz             │  sys arriva già a TARGET_SAMPLE_RATE
         [<timestamp>/recording.wav]
                │
                ▼
-   [transcribe_recording()]            multipart POST /inference
-   language=it, response_format=       i byte del file vanno così come sono:
-   verbose_json, diarize=true          sono già nel formato di whisper.cpp
-               │
-               ▼
-   [whisper-server locale]             127.0.0.1:8080
-   ggml-large-v3-turbo                 diarizza confrontando L vs R
+   [transcribe_recording()]            In-process Parakeet TDT 0.6B v3 (ONNX)
+   de-interleave stereo:               Nessun server esterno né porta 8080.
+   canale L (mic) → YOU ("0")          Segmentazione in frasi naturali.
+   canale R (sys) → THEM ("1")
                │
                ▼
    [TranscriptResult]                  segments[].speaker = "0" | "1" | None
@@ -104,108 +105,84 @@ Se la cattura di sistema fallisce la registrazione **non** si interrompe: l'erro
 
 | Funzione | Note |
 |---|---|
-| `rms(&[f32]) -> f32` | Energia; usata da AEC |
+| `rms(&[f32]) -> f32` | Energia globale |
+| `active_speech_rms(&[f32], frame_size) -> f32` | Calcola l'RMS del parlato attivo (top 30% frame energetici), ignorando silenzi e rumore di fondo |
+| `normalize_speech(Vec<f32>, target_rms) -> Vec<f32>` | Normalizza il livello del parlato a un target RMS con limiter di picco (max 0.95) e cap al guadagno (max 10x) |
+| `balance_speech_levels(mic, sys) -> Vec<f32>` | Allinea l'RMS attivo del microfono a quello del sistema per evitare squilibri stereo e allucinazioni Whisper |
 | `to_mono(Vec<f32>, channels) -> Vec<f32>` | Prende ownership per restituire il buffer intatto quando è già mono. Va sempre chiamata **prima** di `resample_linear` |
 | `resample_linear(&[f32], from, to)` | Interpolazione lineare pura-Rust, nessuna dipendenza esterna. Assume input **mono** |
 | `interleave_stereo(left, right)` | Intreccia mic e sistema zero-paddando il più corto |
 | `write_wav(&[f32], path, rate, channels)` | `hound`, Int16 PCM |
 
-### Echo cancellation (`recorder/aec.rs`)
+### Echo cancellation e controllo guadagno (`recorder/aec.rs`)
 
-Serve a registrare con gli altoparlanti accesi invece che in cuffia. Stima il ritardo fra `sys` e la sua eco nel microfono via cross-correlazione (finestra di 2s, ritardo massimo 200ms), poi sottrae la componente stimata con un coefficiente ai minimi quadrati. Se la correlazione massima è sotto `MIN_CORR` (0.10) l'eco è trascurabile e il mic torna invariato.
+Serve a registrare con gli altoparlanti accesi invece che in cuffia (es. chiamate Teams/Meet). Utilizza **WebRTC AEC3** (Echo Canceller 3) e **AGC2** (Automatic Gain Control 2) tramite il crate puro-Rust `sonora`, con elaborazione a frame da 10ms (160 campioni a 16kHz).
 
-Non è solo qualità audio: **la diarizzazione dipende da questo**. L'audio di sistema rientrato nel canale mic falserebbe il confronto di energia con cui whisper attribuisce gli speaker.
+La pipeline applica:
+- **AEC3**: modella la risposta all'impulso della stanza, eliminando il percorso diretto e il riverbero multi-path
+- **Noise Suppression (NS)**: riduce i rumori di fondo continui (ventole, fruscio)
+- **High-Pass Filter (HPF)**: taglia sub-bassi e DC offset
+- **GainController2 (AGC2)**: adatta il livello del microfono tramite Voice Activity Detection a rete neurale RNN e limiter anti-clipping
+- **Livellamento RMS (`audio::balance_speech_levels`)**: allinea l'energia del microfono a quella dell'audio digitale di sistema (spesso 15-20 dB più forte), impedendo che la voce dell'utente anneghi nel downmix mono di Whisper o venga penalizzata nel confronto energetico di diarizzazione L/R.
 
-Limiti: copre il percorso di eco diretto dominante, non il riverbero multi-path, e assume un ritardo stabile per tutta la registrazione.
+## STT (In-process Parakeet TDT 0.6B v3)
 
-## STT
+### Architettura in-process e modello
 
-### Binario e modello
+A differenza del server LLM (che resta un processo separato su porta 8081), il motore STT è interamente **in-process** all'interno dell'app Tauri, eseguito tramite `parakeet-rs` e ONNX Runtime (`ort`).
+Non ci sono binari esterni da compilare o gestire per STT, né porte locali aperte (nessuna porta 8080), né lockfile di processo o rischi di processi orfani.
 
-`whisper-server` (whisper.cpp) è compilato da `scripts/build-whisper-server.sh` come binario universale macOS (arm64 + x86_64), statico e con Metal attivo, e finisce in `src-tauri/binaries/`. Tauri lo bundla come risorsa (`tauri.conf.json` → `bundle.resources`) e a runtime `bundled_bin_path` lo risolve con `app.path().resolve(..., BaseDirectory::Resource)`.
+Il modello di default è **NVIDIA Parakeet TDT 0.6B v3** quantizzato INT8 (`istupakov/parakeet-tdt-0.6b-v3-onnx` su Hugging Face). È un modello FastConformer-TDT all'avanguardia con punteggiatura e capitalizzazione integrate, eccellente per l'italiano e significativamente superiore a Whisper Large-v3-Turbo per precisione e naturalezza delle frasi.
 
-Il modello **non** è bundled: `download_local_model` scarica `ggml-large-v3-turbo.bin` (~1.5 GB) da Hugging Face in streaming, emettendo eventi `download-progress` con payload `{ step: "model" | "done", pct }`.
+I file del modello risiedono in `<app_data_dir>/models/parakeet-tdt-0.6b-v3/`:
+- `vocab.txt` (~94 KB): vocabolario tokenizzatore
+- `decoder_joint-model.int8.onnx` (~18 MB): decoder e joint network TDT
+- `encoder-model.int8.onnx` (~652 MB): encoder FastConformer INT8
 
-Il download scrive su un file temporaneo `<model>.bin.part` nella stessa cartella del modello finale, e fa `rename` atomico al path definitivo solo a stream completato con successo. Se lo stream fallisce (rete, chiusura app a metà) il `.part` viene ripulito con un `remove_file` best-effort prima di propagare l'errore; se l'app crasha invece di uscire in modo pulito, il `.part` può restare orfano ma non interferisce mai con `model.exists()` sul path finale, quindi non appare mai come modello valido.
+### Download multi-file e stato del modello
 
-### Stato del modello: riconciliato col disco, non col flag salvato
+Il modello **non** è bundled nel binario dell'app per contenere le dimensioni del pacchetto di installazione:
+- `download_local_model` scarica in sequenza i 3 file necessari da Hugging Face tramite streaming HTTP (`reqwest`).
+- Ogni file viene scaricato su un file temporaneo `.part` e rinominato atomicamente al completamento.
+- La barra di avanzamento emette eventi `download-progress` con `{ step: "model", pct }` calcolato sui byte complessivi (~670 MB totali), e termina con `{ step: "done", pct: 100 }`.
+- `is_stt_model_ready` (e `get_stt_settings`) verifica direttamente la presenza di tutti e 3 i file sul filesystem prima di dichiarare il modello pronto (`local_ready: true`).
 
-`SttSettings.local_ready` è persistito in `settings.json`, ma non è la fonte di verità: `get_stt_settings` lo ricalcola a ogni chiamata verificando se il file del modello esiste realmente sul path atteso (`local_model_path`), ignorando il valore letto dal JSON. Questo copre due casi che il flag salvato da solo non gestirebbe: l'utente che cancella il `.bin` a mano, e un download interrotto che grazie al file temporaneo non lascia comunque un `.bin` valido. Il valore scritto da `download_local_model` a fine download resta nel file per compatibilità ma è puramente informativo: chiunque legga lo stato via `get_stt_settings` vede sempre la realtà del filesystem.
+### Gestione dello stato in-process (`SttEngineState`)
 
-### Ciclo di vita del server
+`SttEngineState` (gestito come state in Tauri `lib.rs`) incapsula un `Arc<Mutex<Option<Arc<ParakeetTDT>>>>`:
+- L'engine viene inizializzato in modo lazy alla prima trascrizione oppure esplicitamente via `start_stt_server` (preriscaldamento).
+- `check_stt_server` ritorna `"running"` se tutti i file del modello sono presenti su disco, oppure `"stopped"` se il modello non è ancora stato scaricato.
+- `stop_stt_server` rilascia la sessione ONNX in memoria impostando lo slot a `None`, liberando istantaneamente la RAM.
+- `delete_local_model` rilascia l'engine in memoria e rimuove la cartella del modello dal disco.
 
-Le primitive di processo/porta (`port_is_open`, `wait_for_port`, `spawn_tracked`, `stop_tracked_server`, `kill_tracked`, `default_threads`) vivono in `commands/server.rs`, condivise con il server LLM (vedi sotto): la logica di stop porta due invarianti non ovvi (guard rilasciato prima di ogni `.await`, mai kill-by-porta) che una copia-incolla fra due domini avrebbe finito per rompere in uno dei due punti. `spawn_tracked` (spawn + registrazione del child nello slot) e `default_threads` (core meno due, mai sotto 1) sono l'equivalente per l'avvio; `kill_tracked` è il kill best-effort usato alla chiusura dell'app.
+### Trascrizione e chunking audio
 
-Due dettagli servono a non lasciare server orfani, cioè processi vivi che tengono la porta occupata senza che nessuno li tracci più (al riavvio successivo l'app li trova e rifiuta di fermarli, vedi il caso orfano più sotto):
+`transcribe_recording` legge il file WAV prodotto dal registratore:
+1. Converte i campioni PCM in `f32` a 16 kHz.
+2. Per gestire registrazioni arbitrarie e di lunga durata senza picchi eccessivi di memoria o latenze di inferenza dell'encoder, l'audio viene suddiviso in chunk temporali da **120 secondi** (1.920.000 campioni).
+3. Ogni chunk viene elaborato da `model.transcribe_samples(chunk, TimestampMode::Sentences)`: Parakeet TDT restituisce direttamente i token temporizzati e raggruppati in frasi naturali con maiuscole e punteggiatura.
+4. I timestamp di ogni chunk vengono traslati dell'offset temporale e uniti nella lista dei segmenti.
+5. Il risultato viene salvato come `transcript.json` accanto al file WAV (con `transcription_ms` misurato accuratamente) e viene generato un file Markdown strutturato `transcript.md` per Obsidian con frontmatter YAML (e duplicato come `<timestamp>.md` nella cartella `transcripts_dir` se configurata).
 
-- `spawn_tracked` imposta `kill_on_drop(true)`: se il `Child` viene droppato senza un kill esplicito (unwind da panic, o un errore a metà di `stop_tracked_server`), tokio termina il processo invece di abbandonarlo.
-- `stop_tracked_server` toglie il child dallo slot con `take()` **prima** di killarlo: se `start_kill` fallisce il segnale non è mai partito, quindi il child va rimesso nello slot prima di propagare l'errore. Un `wait` fallito invece non si recupera, perché a quel punto il SIGKILL è già stato inviato.
+### Diarizzazione deterministica a canali fisici
 
-Nessuno dei due copre la morte violenta dell'app (SIGKILL sul processo padre, Force Quit, logout): lì `RunEvent::ExitRequested` non viene mai emesso e nessun codice del padre gira più. È il motivo per cui un `whisper-server` può sopravvivere a una sessione terminata da un segnale esterno, ad esempio un `tauri dev` ucciso dal terminale invece che chiuso dalla finestra. Quel caso non si previene: si rimedia alla sessione successiva, con il lockfile.
+La diarizzazione non si affida a euristiche di clustering spettrale o a confronti di energia fallibili. Sfrutta invece l'isolamento fisico dei canali stereo garantito dalla pipeline audio (AEC3 + AGC2 + bilanciamento RMS):
+- **Canale 0 (Sinistro)**: microfono dell'utente isolato dal rientro delle casse → **YOU (`"0"`)**
+- **Canale 1 (Destro)**: audio digitale delle altre persone nella chiamata → **THEM (`"1"`)**
 
-### Lockfile del processo
+Nei file stereo, `transcribe_recording` de-interleave i due canali ed esegue la trascrizione indipendente di ciascun canale con Parakeet TDT:
+- I segmenti del canale sinistro ricevono determinisicamente `speaker: Some("0".to_string())`.
+- I segmenti del canale destro ricevono determinisicamente `speaker: Some("1".to_string())`.
+- Tutti i segmenti dei due interlocutori vengono poi ordinati cronologicamente per `start` e uniti.
 
-Un server sopravvissuto a una morte violenta tiene la porta, e senza altre informazioni è indistinguibile da un processo di terzi: l'app non può né riusarlo con cognizione né fermarlo, perché l'invariante "mai kill-by-porta" (sopra) le impedisce di terminare qualcosa che non ha avviato lei.
-
-`spawn_tracked` scrive quindi `<app_data_dir>/run/<nome>.json` (`whisper.json`, `llm.json`) con quattro campi:
-
-| Campo | A cosa serve |
-|---|---|
-| `pid` | Chi terminare, quando il processo non è più un `Child` |
-| `bin` | Riconoscere il processo: deve essere il nostro binario |
-| `started_at` | Difesa contro il riciclo dei pid, nel formato grezzo di `ps -o lstart=` |
-| `model` | Sapere cosa ha in RAM: un `llama-server` orfano può avere un GGUF diverso da quello ora selezionato |
-
-`read_valid_lock` restituisce il lock **solo** se `ps -p <pid> -o lstart=,comm=` conferma sia il binario sia l'istante di avvio; altrimenti il lock è spazzatura di una sessione passata e viene cancellato senza mandare nessun segnale. È l'unica cosa che autorizza `kill_pid`: un pid non verificato può essere stato riassegnato dall'OS a un processo di qualcun altro.
-
-Sui tre punti in cui la porta è occupata ma lo slot `Child` è vuoto:
-
-- **avvio** (`try_adopt_running_server`): lock valido e modello atteso → si **adotta** il processo così com'è, senza ricaricare il modello; lock valido ma modello diverso → si termina e si rispawna; nessun lock valido → si usa comunque quello che risponde sulla porta, come l'app ha sempre fatto (è il flusso di chi avvia un server a mano per debug, vedi la skill `run-earwig`), e sarà lo stop a rifiutarsi di terminarlo
-- **stop** (`stop_tracked_server`): lock valido → SIGKILL per pid e attesa del rilascio della porta; altrimenti l'errore di sempre, che chiede di chiudere il processo a mano
-- **chiusura dell'app** (`kill_tracked`): stesso trattamento. Senza questo ramo un processo adottato non verrebbe mai terminato e verrebbe riadottato a ogni sessione, all'infinito
-
-Due limiti accettati: `ps -o lstart=` formatta la data secondo il locale, quindi un cambio di locale fra due sessioni fa fallire il confronto e l'app non adotta (degrada verso la prudenza, mai verso il kill sbagliato); e due istanze di earwig in parallelo condividono il lockfile, con la seconda che adotterebbe il server della prima.
-
-`WhisperServerState` tiene l'unico handle al processo. `start_local_server`:
-
-1. Se la porta 8080 è già in ascolto, esce subito
-2. Verifica che il modello esista su disco
-3. Spawna il binario con `--model/--host/--port`, più `--flash-attn` e `--threads`
-4. Polla la porta ogni 250ms fino a 60s
-
-Flash attention e numero di thread non hanno UI: si deducono dalla macchina (`available_parallelism` meno due, per lasciare respiro al resto del sistema). `--flash-attn` esiste solo dalle build recenti di whisper.cpp, quindi il tag pinnato in `scripts/build-whisper-server.sh` e i flag passati qui devono restare allineati: passare `-fa` a un binario vecchio lo fa uscire con un errore di parsing.
-
-`stop_local_server` (condivisa da `stop_stt_server`, `restart_stt_server` e `delete_local_model`) estrae il `Child` da `WhisperServerState` tenendo il `MutexGuard` solo per il `take()`, mai attraverso un `.await`: poi killa e attende il processo, e infine polla la porta 8080 ogni secondo (timeout 5s) finché non risulta libera, perché il socket può restare occupato un istante dopo che `wait()` è tornato. Se `WhisperServerState` è già vuoto ma la porta risulta comunque aperta (un whisper-server orfano da una sessione precedente, non tracciato da questo processo), la funzione non tenta di killare nulla per porta: ritorna un errore esplicito che chiede di chiudere il processo a mano. `restart_stt_server` è `stop_local_server` + `start_local_server`: se lo stop fallisce (incluso il caso orfano), il restart fallisce con lo stesso errore. `delete_local_model` ferma il server prima di cancellare il file (il processo lo tiene aperto) e propaga lo stesso errore se lo stop fallisce.
-
-In `lib.rs` l'app è costruita con `.build()` invece di `.run()` diretto, così il loop eventi può intercettare `RunEvent::ExitRequested` e terminare il figlio, altrimenti `whisper-server` resterebbe in background dopo il quit.
-
-### Trascrizione
-
-`transcribe_recording` invia il WAV in multipart a `POST /inference` con `language=it`, `response_format=verbose_json` e `diarize=true`, in streaming dal file (`Part::stream`, mai caricato per intero in RAM). Il file **non** viene convertito: quello che Earwig produce è già mono/stereo 16kHz 16-bit PCM, cioè esattamente ciò che `read_wav` accetta.
-
-Il risultato viene arricchito con `transcription_ms` (misurato lato client, non presente nella risposta del server) e scritto come `transcript.json` accanto al WAV.
+Nei file mono (es. audio importati dall'esterno via `import_audio_file`), il canale singolo viene trascritto con `speaker: None`.
 
 ### Stato "fallito": `transcript_error.json`
 
-`transcribe_recording` (il comando Tauri, non `run_transcription` che ne contiene la logica) avvolge l'intera chiamata: se il risultato è `Err`, scrive `{ "message": <errore> }` in `transcript_error.json` nella stessa cartella del WAV; se è `Ok`, rimuove quel file se presente. Questo copre sia il primo tentativo (es. whisper-server giù, JSON malformato) sia un rilancio: un rilancio riuscito su un record già segnato come fallito cancella la traccia d'errore, altrimenti resterebbe segnato "fallito" nonostante un `transcript.json` valido.
-
-`list_recordings` legge `transcript_error.json` solo quando `transcript.json` non è presente (i due non dovrebbero mai coesistere, ma se coesistessero il transcript vince). Il messaggio letto popola `RecordingEntry.error`, da cui il frontend deriva un terzo stato (`TranscriptStatus`, vedi [`reference.md`](reference.md)) oltre a "trascritto"/"in attesa".
-
-Il rilancio non ha un comando dedicato: è lo stesso `transcribe_recording(path)`, richiamato con `<folder_path>/recording.wav` dal frontend (`App.svelte`, `retryTranscription`).
-
-### Diarizzazione: la fa il server
-
-Con `diarize=true` e un file **stereo**, whisper.cpp confronta l'energia dei due canali su ogni segmento (`estimate_diarization_speaker` in `server.cpp`, soglia 1.1) e mette il risultato nel campo `speaker` di ogni segmento del `verbose_json`:
-
-- `"0"` → canale sinistro → microfono → **YOU**
-- `"1"` → canale destro → audio di sistema → **THEM**
-- `"?"` → energie a meno del 10% l'una dall'altra
-
-`normalize_speaker` riduce l'ambiguità a `None`, lo stesso stato dei file mono: le etichette sono due, non tre. Sui file mono il server ignora `diarize` da solo (`pcmf32s.size() == 2` è falso), quindi non serve condizionare il campo lato client.
-
-Verificato empiricamente: due voci distinte su canali separati escono correttamente come `speaker` `"0"` e `"1"`; senza il campo `diarize` il campo `speaker` non compare affatto.
+Se `transcribe_recording` incontra un errore (file non valido, memoria insufficiente), scrive un file sidecar `transcript_error.json` con `{ "message": <errore> }` nella cartella della registrazione, popolando il campo `RecordingEntry.error` letto da `list_recordings`. Quando una trascrizione successiva ha successo, il file di errore viene rimosso.
 
 ## LLM locale (riassunto e chat)
+
 
 Per ogni registrazione trascritta, un riassunto/appunti generato una volta e persistito, più una chat di follow-up sulla trascrizione, entrambi tramite un LLM **locale** (nessun cloud): stesso principio di whisper, un secondo binario bundlato invece di una dipendenza esterna (Ollama & co).
 
@@ -255,13 +232,38 @@ Generazione automatica del riassunto solo se `llmStatus === "running"` all'apert
 
 Il download/scelta del modello LLM è opzionale e lazy: `Onboarding.svelte` resta invariato e riguarda solo whisper (nulla funziona senza), la chat è puramente additiva su un'app che già registra e trascrive.
 
+### Modalità ridotta (Edge drawer / Mini bar)
+
+La modalità ridotta (`set_compact_mode`, `set_compact_hover`, `set_compact_y`, `get_compact_position` in `commands/window.rs`, con UI in `CompactStrip.svelte`) permette di tenere Earwig sempre attivo ancorato al bordo destro dello schermo in background con una linguetta minimal in stile macOS premium (colori coerenti con l'app, senza animazioni fancy):
+- **Trasparenza nativa**: finestra configurata con `transparent: true` e `macOSPrivateApi: true` in `tauri.conf.json`, feature `macos-private-api` abilitata per `tauri` in `Cargo.toml`, e classe `compact-mode` su `html`, `body` e `#app` con `background: transparent !important`.
+- **I 2 stati della linguetta**:
+  1. **Idle (non hover)**: sporge solo una linguetta discreta aumentata a `w-[12px]` dal bordo destro dello schermo con un sobrio micro-dot; l'ingombro della finestra è di soli 18px per non intralciare i click su altre app.
+  2. **Hover (sopra la linguetta)**: la linguetta si allarga a `w-[82px]` con layout ultra-compatto senza timer: a sinistra il pulsante REC/STOP circolare (con icona Play centrata poco a destra), affiancato all'icona nuda cliccabile `Maximize2` (senza round button) e ai 6 puntini verticali `GripVertical` posizionati a ridosso del bordo schermo. Zero polling in background, transizione fluida e reattiva guidata dagli eventi del puntatore.
+- **Spostamento verticale (Draggable)**: tramite l'icona grip `GripVertical` l'utente può trascinare liberamente la barra su e giù lungo il bordo destro dello schermo (`set_compact_y`), con clamping automatico per evitare la barra dei menu di macOS in alto e il Dock in basso.
+- **Transizione ridotta → normale**: ripristina decorazioni native, disattiva `always_on_top`, riapplica i vincoli di dimensione minima e riposiziona la finestra alle coordinate precedenti.
+
+### Tray Icon (Menu Bar) e Gestione Dinamica del Dock
+
+Earwig integra un'icona nella barra dei menu macOS in alto a destra (`TrayIconBuilder` con `icon_as_template(true)`) che consente all'app di vivere silenziosamente come utility daemon:
+- **Interazione Tray**:
+  - *Clic sinistro*: toggle rapido della dashboard principale (`show_dashboard` / `hide_dashboard`). Se la finestra è aperta, la nasconde e rimuove l'app dal Dock; se è chiusa o minimizzata, la ripristina e focalizza.
+  - *Clic destro*: menu contestuale minimale con voci native per accedere direttamente alle "Impostazioni..." (emette l'evento frontend `open-settings`) ed "Esci da Earwig" (chiusura sicura con terminazione dei server locali tracciati).
+- **Visibilità Dinamica nel Dock (`set_dock_visible`)**:
+  - Quando la dashboard è aperta e visibile, l'app passa a `NSApplicationActivationPolicy::Regular` (visibile nel Dock di macOS con puntino indicatore e presente in `Cmd+Tab`).
+  - Quando la dashboard viene chiusa (pulsante rosso "X" o `Cmd+W`), minimizzata (pulsante giallo o `Cmd+M`) o nascosta via tray, l'evento viene intercettato da `on_window_event`: la finestra viene nascosta (`window.hide()`) e la policy passa a `NSApplicationActivationPolicy::Accessory` (scompare dal Dock a meno che non sia stata fissata manualmente dall'utente con "Mantieni nel Dock", e scompare da `Cmd+Tab`).
+  - Se l'utente clicca l'app nel Finder o Spotlight mentre è già in esecuzione in background, l'evento `RunEvent::Reopen` riapre la dashboard e ripristina la policy su `Regular`.
+- **Avvio Automatico al Boot (Autostart)**:
+  - Gestito dal plugin `tauri-plugin-autostart` (e `@tauri-apps/plugin-autostart` lato frontend) tramite un `LaunchAgent` nativo macOS (`~/Library/LaunchAgents/com.vincenzomars.earwig.plist`).
+  - All'avvio del sistema, Earwig viene lanciato con il flag `--background`: parte direttamente in policy `Accessory` con finestra nascosta, pronto all'uso istantaneo nella barra dei menu.
+  - Lo switch è configurabile sia nell'ultimo step dell'Onboarding (attivo per default) sia nella prima sezione delle Impostazioni (`SettingsPanel.svelte`).
+
 ## Stato persistente
 
 - `settings.json` — `SttSettings` serializzato in `app_data_dir/` (`local_ready`/`llm_ready` sono solo l'ultimo valore noto, vedi sopra; `llm_hf_repo`/`llm_hf_file`/`llm_size_bytes` sono il modello LLM scelto, tutti `#[serde(default)]` per non far fallire il parsing di un `settings.json` scritto prima che questi campi esistessero)
 - `app_data_dir/models/ggml-large-v3-turbo.bin` — il modello whisper; `ggml-large-v3-turbo.bin.part` può comparire durante un download, sempre transitorio
 - `app_data_dir/models/llm-models/<org>--<repo>/<file>.gguf` — i modelli LLM scaricati da earwig stesso (`download_llm_model`); `.gguf.part` durante un download, sempre transitorio
 - `app_data_dir/models/llm-cache/` — vecchia cache nativa di `llama-server` (`LLAMA_CACHE`, layout hash-based), non più scritta ma non migrata automaticamente: resta finché l'utente non preme "Elimina modelli scaricati"
-- `~/Documents/Earwig/Records/<timestamp>/` — `recording.wav` + `transcript.json` (successo) oppure `transcript_error.json` (ultimo tentativo fallito, rimosso al primo rilancio riuscito) + `notes.json` (riassunto/chat, opzionale)
+- `~/Documents/Earwig/Records/<timestamp>/` — `recording.wav` + `transcript.json` + `transcript.md` (successo, note formattate per Obsidian) oppure `transcript_error.json` (ultimo tentativo fallito, rimosso al primo rilancio riuscito) + `notes.json` (riassunto/chat, opzionale). Se configurata, le note `.md` vengono salvate anche nel Vault Obsidian / cartella `transcripts_dir` dell'utente come `<timestamp>.md`
 
 ## Dipendenze chiave
 
@@ -275,8 +277,11 @@ Il download/scelta del modello LLM è opzionale e lazy: `Onboarding.svelte` rest
 | reqwest | 0.12 | HTTP verso whisper-server, Hugging Face (modello whisper e ricerca modelli LLM) |
 | tokio | 1.x | Runtime async |
 | tauri-plugin-http | 2.x | Fetch lato Rust per le chiamate AI SDK verso `llama-server` (evita ATS/CORS nel webview) |
+| tauri-plugin-autostart | 2.x | Gestione avvio all'accensione del Mac tramite LaunchAgent |
+| sonora | 0.2 | Port puro-Rust di WebRTC AEC3 (Acoustic Echo Cancellation) + NS + HPF |
+| objc2 / objc2-app-kit | 0.6 / 0.3 | Binding macOS nativi per commutare la NSApplicationActivationPolicy a runtime |
 
-Frontend: `ai` (core, `streamText`) + `@ai-sdk/openai-compatible` per il provider locale, `@tauri-apps/plugin-http` per il fetch, tutti in `src/lib/llm.ts`. Deliberatamente **non** `@ai-sdk/svelte` (vedi sopra).
+Frontend: `ai` (core, `streamText`) + `@ai-sdk/openai-compatible` per il provider locale, `@tauri-apps/plugin-http` per il fetch, `@tauri-apps/plugin-autostart` per il controllo dell'avvio automatico, tutti in `src/lib/`.
 
 ## Pipeline CI/CD e Release
 
