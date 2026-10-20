@@ -162,6 +162,7 @@ pub fn run() {
             commands::window::set_compact_mode,
             commands::window::set_compact_hover,
             commands::window::set_compact_y,
+            commands::window::save_compact_y,
             commands::window::get_compact_position,
             commands::window::show_dashboard,
             commands::window::hide_dashboard,

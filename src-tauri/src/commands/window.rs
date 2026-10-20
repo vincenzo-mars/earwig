@@ -1,7 +1,9 @@
 //! Comandi per la gestione della finestra e della modalità ridotta (edge drawer / mini bar).
 
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, State, WebviewWindow};
+
+use super::{get_stt_settings, save_stt_settings};
 
 pub struct SavedWindowState {
     pub is_compact: bool,
@@ -65,11 +67,33 @@ pub async fn set_compact_mode(
     state: State<'_, WindowModeState>,
     enabled: bool,
 ) -> Result<(), String> {
+    let persisted_compact_y = if enabled {
+        // La posizione persistita si legge solo se non c'è già un drag in
+        // questa sessione: il file settings.json non viene toccato a ogni hover.
+        let already_known = state
+            .0
+            .lock()
+            .map_err(|e| e.to_string())?
+            .compact_y
+            .is_some();
+        if already_known {
+            None
+        } else {
+            Some(get_stt_settings(window.app_handle().clone()).await.compact_y)
+        }
+    } else {
+        None
+    };
+
     let mut lock = state.0.lock().map_err(|e| e.to_string())?;
 
     if enabled {
         if lock.is_compact {
             return Ok(());
+        }
+
+        if lock.compact_y.is_none() {
+            lock.compact_y = persisted_compact_y.flatten();
         }
 
         // Salva posizione e dimensione attuali
@@ -191,6 +215,20 @@ pub async fn set_compact_y(
     let x = right_edge - cur_w;
 
     let _ = window.set_position(Position::Logical(LogicalPosition::new(x, clamped_y)));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn save_compact_y(
+    app: AppHandle,
+    state: State<'_, WindowModeState>,
+) -> Result<(), String> {
+    let compact_y = state.0.lock().map_err(|e| e.to_string())?.compact_y;
+    if let Some(compact_y) = compact_y {
+        let mut settings = get_stt_settings(app.clone()).await;
+        settings.compact_y = Some(compact_y);
+        save_stt_settings(app, settings).await?;
+    }
     Ok(())
 }
 

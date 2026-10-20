@@ -46,6 +46,11 @@ pub struct SttSettings {
     // `content_length()` durante lo stream).
     #[serde(default)]
     pub llm_size_bytes: u64,
+    // Posizione verticale della linguetta in modalità ridotta, persistita tra
+    // un avvio e l'altro. `#[serde(default)]` come sopra: settings.json più
+    // vecchi del campo non devono fallire il parsing.
+    #[serde(default)]
+    pub compact_y: Option<f64>,
     // Come `local_ready` per whisper: valore persistito solo indicativo, la
     // verità è sempre il file sul disco (vedi get_stt_settings sotto).
     #[serde(default)]

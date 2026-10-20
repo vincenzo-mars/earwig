@@ -10,6 +10,17 @@ let stage = $state<"idle" | "expanded">("idle");
 let isDragging = $state(false);
 let dragStartY = 0;
 let windowStartY = 0;
+// Il timing dell'animazione è governato dal frontend: il resize nativo della
+// finestra avviene a hover-start (crescita verso sinistra, invisibile su
+// sfondo trasparente) ma solo ~220ms dopo il mouseleave, quando la transizione
+// CSS di larghezza è già finita. Accorciare quel ritardo fa clippare il
+// contenuto che sta ancora animando dentro la finestra già ristretta: è lo
+// "scatto" visto in precedenza.
+let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+
+$effect(() => {
+  return () => clearTimeout(leaveTimer);
+});
 
 // Ascolta gli eventi di cambio stato emessi dal backend
 $effect(() => {
@@ -27,6 +38,7 @@ $effect(() => {
 
 async function handleMouseEnter() {
   if (isDragging) return;
+  clearTimeout(leaveTimer);
   stage = "expanded";
   try {
     await invoke("set_compact_hover", {
@@ -41,14 +53,16 @@ async function handleMouseEnter() {
 async function handleMouseLeave() {
   if (isDragging) return;
   stage = "idle";
-  try {
-    await invoke("set_compact_hover", {
+  // Il restringimento nativo attende la fine della transizione CSS: un
+  // rientro del cursore nel frattempo lo annulla e ri-espande.
+  clearTimeout(leaveTimer);
+  leaveTimer = setTimeout(() => {
+    if (isDragging || stage !== "idle") return;
+    invoke("set_compact_hover", {
       hovered: false,
       isRecording: session.isRecording,
-    });
-  } catch (e) {
-    console.error("Failed to collapse compact window:", e);
-  }
+    }).catch((e) => console.error("Failed to collapse compact window:", e));
+  }, 220);
 }
 
 // Sincronizza la dimensione se cambia lo stato di registrazione mentre è aperta
@@ -93,6 +107,9 @@ async function handleGripPointerDown(e: PointerEvent) {
     isDragging = false;
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
+    // Fine del drag: la posizione Y aggiornata da set_compact_y viene
+    // persistita in settings.json per ritrovarla al prossimo avvio.
+    invoke("save_compact_y").catch(() => {});
     if (
       ev.clientX < 0 ||
       ev.clientX > window.innerWidth ||
@@ -122,7 +139,7 @@ async function handleGripPointerDown(e: PointerEvent) {
   -->
   <div
     class={cn(
-      "absolute right-0 flex h-10 items-center overflow-hidden rounded-l-2xl border-y border-l bg-brand-darker/95 backdrop-blur-md shadow-raised transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+      "absolute right-0 flex h-10 items-center overflow-hidden rounded-l-2xl border-y border-l bg-brand-darker/95 backdrop-blur-md shadow-raised transition-[width,border-color] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
       session.isRecording ? "border-danger/50" : "border-brand-cream/15",
       stage === "idle" && "w-[12px] cursor-pointer",
       stage === "expanded" && "w-[82px]",

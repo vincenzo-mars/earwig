@@ -11,6 +11,22 @@ Formato:
 **Prossimi passi:** ...
 ```
 
+## 2026-10-20 13-45 — Linguetta compatta: animazione a padrone unico e Y persistente
+
+**Obiettivo:** chiudere due voci aperte della linguetta ridotta: gli scatti nelle transizioni di hover (due animazioni in parallelo: CSS 200ms contro resize nativo istantaneo via IPC) e la posizione verticale che si azzerava a ogni avvio.
+
+**Fatto:**
+- **Scatti di hover:** il timing è ora governato dal frontend (`CompactStrip.svelte`). Il resize nativo parte a hover-start (crescita verso sinistra, invisibile sullo sfondo trasparente) e il restringimento viene rimandato di ~220ms dopo il mouseleave, quando la transizione CSS di larghezza è già finita; il timer è cancellato dal rientro del cursore, che ri-espande. `transition-all` ristretto a `transition-[width,border-color]` per non animare altro durante lo swap del contenuto.
+- **Persistenza della Y:** campo `compactY` in `settings.json` (`#[serde(default)]`), nuovo comando `save_compact_y` invocato dal frontend a fine drag, `set_compact_mode` carica la Y da settings all'attivazione se in sessione non c'è ancora stato un drag.
+- Documentazione aggiornata (`docs/architecture.md`, `docs/reference.md`) e voci 5 e 6 chiuse in `TODO.md`.
+
+**Decisioni:**
+- Singolo padrone dell'animazione: il CSS nel webview. L'alternativa (animare il resize nativo con NSAnimationContext via objc2) scartata: API non esposta da Tauri e complessità objc2 per lo stesso risultato visivo.
+- Salvataggio a fine drag e non dentro `set_compact_y`: quel comando scorre a ogni pointermove e scrivere il file a ogni frame sarebbe inaccettabile.
+- Il ritardo di restringimento è 220ms (sopra i 200ms della transizione): nel frattempo la finestra resta larga ma trasparente, e un rientro del cursore nella zona trasparente è intenzionalmente un ri-hover.
+
+**Prossimi passi:** verifica visiva su `tauri dev` (hover, ri-hover entro i 220ms, drag seguito da riavvio con Y ripristinata).
+
 ## 2026-10-20 — Centratura orizzontale geometrica ed ottica dell'icona Play in Recorder
 
 **Obiettivo:** Correggere la centratura orizzontale dell'icona Play (filigrana a riposo) nel pulsante REC principale della schermata home (`Recorder.svelte`), eliminando l'offset in eccesso verso destra introdotto in precedenza e bilanciando perfettamente margini e peso visivo.

@@ -71,9 +71,10 @@ Gli helper di percorso (`model_dir`, `local_model_path`, `recordings_dir`, `bund
 
 | Command | Input | Output | Effetti |
 |---|---|---|---|
-| `set_compact_mode` | `enabled: bool` | `Result<(), String>` | Alterna fra la finestra standard (640x720 con decorazioni native) e la modalità ridotta ancorata al bordo destro dello schermo (senza decorazioni, always-on-top). Salva e ripristina coordinate e dimensioni |
-| `set_compact_hover` | `hovered: bool, is_recording: bool` | `Result<(), String>` | Adatta dinamicamente larghezza e posizione X della finestra compatta in base al passaggio del mouse e allo stato di registrazione |
-| `set_compact_y` | `y: f64` | `Result<(), String>` | Sposta verticalmente la barra compatta lungo il bordo dello schermo con clamping tra menu bar e dock macOS |
+| `set_compact_mode` | `enabled: bool` | `Result<(), String>` | Alterna fra la finestra standard (640x720 con decorazioni native) e la modalità ridotta ancorata al bordo destro dello schermo (senza decorazioni, always-on-top). All'attivazione carica da `settings.json` la Y persistita se in sessione non c'è ancora stato un drag; salva e ripristina coordinate e dimensioni |
+| `set_compact_hover` | `hovered: bool, is_recording: bool` | `Result<(), String>` | Adatta dinamicamente larghezza e posizione X della finestra compatta in base al passaggio del mouse e allo stato di registrazione. Il timing è governato dal frontend: l'espansione nativa parte a hover-start, il restringimento arriva ~220ms dopo il mouseleave, quando la transizione CSS è finita |
+| `set_compact_y` | `y: f64` | `Result<(), String>` | Sposta verticalmente la barra compatta lungo il bordo dello schermo con clamping tra menu bar e dock macOS. Aggiorna solo lo stato in memoria |
+| `save_compact_y` | — | `Result<(), String>` | Persiste in `settings.json` l'ultima Y impostata con `set_compact_y`; chiamato dal frontend a fine drag |
 | `get_compact_position` | — | `Result<(f64, f64), String>` | Ritorna le coordinate correnti (X, Y) logiche della finestra compatta per il drag |
 | `show_dashboard` | — | `Result<(), String>` | Mostra, rimuove dalla minimizzazione e porta in primo piano la finestra principale, impostando la policy del Dock a `Regular` |
 | `hide_dashboard` | — | `Result<(), String>` | Nasconde la finestra e imposta la policy del Dock a `Accessory` (rimossa dal Dock a meno che non sia fissata) |
