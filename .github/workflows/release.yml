@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release macOS
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Cache precompiled servers
+        id: cache-servers
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: macos-servers-${{ hashFiles('scripts/build-whisper-server.sh', 'scripts/build-llama-server.sh') }}
+
+      - name: Build whisper-server
+        if: steps.cache-servers.outputs.cache-hit != 'true'
+        run: bash scripts/build-whisper-server.sh
+
+      - name: Build llama-server
+        if: steps.cache-servers.outputs.cache-hit != 'true'
+        run: bash scripts/build-llama-server.sh
+
+      - name: Build Earwig
+        run: npm run tauri build -- --target aarch64-apple-darwin
+
+      - name: Determine Release Tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          BASE_TAG="v${VERSION}"
+          git fetch --tags --force 2>/dev/null || true
+          if git rev-parse -q --verify "refs/tags/${BASE_TAG}" >/dev/null 2>&1; then
+            RELEASE_TAG="${BASE_TAG}-b${{ github.run_number }}"
+          else
+            RELEASE_TAG="${BASE_TAG}"
+          fi
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
+          echo "APP_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "==> Release tag: ${RELEASE_TAG}"
+
+      - name: Package Release Assets
+        run: |
+          mkdir -p dist-release
+          
+          # Trova il DMG generato da Tauri
+          DMG_PATH=$(find src-tauri/target -name "*.dmg" -type f | head -n 1)
+          if [ -n "$DMG_PATH" ] && [ -f "$DMG_PATH" ]; then
+            echo "DMG trovato in $DMG_PATH"
+            cp "$DMG_PATH" "dist-release/Earwig-${RELEASE_TAG}-macos-arm64.dmg"
+          else
+            echo "ERRORE: Nessun DMG trovato in src-tauri/target" >&2
+            exit 1
+          fi
+
+          # Trova Earwig.app e crea un archivio zip con ditto per preservare metadati e symlink macOS
+          APP_PATH=$(find src-tauri/target -name "Earwig.app" -type d | head -n 1)
+          if [ -n "$APP_PATH" ] && [ -d "$APP_PATH" ]; then
+            echo "App bundle trovata in $APP_PATH"
+            ditto -c -k --keepParent "$APP_PATH" "dist-release/Earwig-${RELEASE_TAG}-macos-arm64.zip"
+          else
+            echo "ERRORE: Earwig.app non trovata in src-tauri/target" >&2
+            exit 1
+          fi
+
+          # Genera i checksum SHA-256
+          cd dist-release
+          shasum -a 256 *.dmg *.zip > checksums-sha256.txt
+          echo "Checksums generati:"
+          cat checksums-sha256.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Earwig ${{ env.RELEASE_TAG }}
+          generate_release_notes: true
+          files: |
+            dist-release/*.dmg
+            dist-release/*.zip
+            dist-release/checksums-sha256.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
