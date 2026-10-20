@@ -11,6 +11,19 @@ Formato:
 **Prossimi passi:** ...
 ```
 
+## 2026-10-20 14-30 — Diagnostica qualità trascrizione: mic raw + esempio A/B
+
+**Obiettivo:** spiegare perché lo stesso Parakeet TDT v3 in Handy riconosce meglio. Fase 1 del piano: misurare se la pipeline audio di Earwig degrada l'input prima che arrivi al modello.
+
+**Fatto:**
+- `stop_recording` salva anche `mic_raw.wav` nella cartella della registrazione: mic f32 al sample rate nativo del device (48kHz tipico), prima di downmix/resample/AEC/balance. File di diagnostica, da rimuovere o nascondere dietro flag a indagine chiusa.
+- Nuovo esempio `src-tauri/examples/transcribe_wav.rs`: trascrive un WAV arbitrario con `parakeet-rs` fuori dall'app. Su input non-16k stampa due trascrizioni: resample lineare (identico all'app) e resample con FIR passa-basso anti-alias (63 tap Hamming) prima della decimazione. Stereo: trascrive L (mic) e R (sistema) separatamente come l'app.
+- Uso: `cargo run --example transcribe_wav -- <wav> [model_dir]`, model_dir default `~/Library/Application Support/com.vincenzomars.earwig/parakeet-tdt-0.6b-v3`.
+
+**Ipotesi in ordine:** (1) resample lineare senza anti-alias aliasa >8kHz nel banda vocale, (2) AEC3 + balance fino a 10× degradano la voce, (3) quantizzazione int8 (il preset fp32 già pianificato la testa), (4) `to_mono` media i canali (-6dB su mono device stereo).
+
+**Prossimi passi:** registrare una frase nota, confrontare i tre testi (Earwig, mic_raw lineare, mic_raw anti-alias) e Handy; fix guidato dall'esito (rubato anti-alias / clamp balance / preset fp32).
+
 ## 2026-10-20 13-45 — Linguetta compatta: animazione a padrone unico e Y persistente
 
 **Obiettivo:** chiudere due voci aperte della linguetta ridotta: gli scatti nelle transizioni di hover (due animazioni in parallelo: CSS 200ms contro resize nativo istantaneo via IPC) e la posizione verticale che si azzerava a ogni avvio.

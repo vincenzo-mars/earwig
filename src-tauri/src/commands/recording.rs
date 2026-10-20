@@ -253,6 +253,28 @@ pub async fn stop_recording(
     let path = new_recording_path(&app, timestamp).await?;
     let wav_path = path.clone();
     tokio::task::spawn_blocking(move || {
+        // Diagnostica qualità trascrizione: copia del mic al rate nativo del
+        // device, prima di resample/AEC/balance. Serve a trascrivere lo stesso
+        // audio senza la catena di processing (esempio `transcribe_wav`) e
+        // capire se la pipeline degrada il riconoscimento.
+        if let Some(folder) = wav_path.parent() {
+            let spec = hound::WavSpec {
+                channels: ch,
+                sample_rate: mic_native_rate,
+                bits_per_sample: 32,
+                sample_format: hound::SampleFormat::Float,
+            };
+            match hound::WavWriter::create(folder.join("mic_raw.wav"), spec) {
+                Ok(mut writer) => {
+                    for sample in &mic_raw {
+                        let _ = writer.write_sample(*sample);
+                    }
+                    let _ = writer.finalize();
+                }
+                Err(e) => eprintln!("mic_raw.wav non scritto: {e}"),
+            }
+        }
+
         // Il mic cattura al rate nativo del device (cpal non lo forza) e con il
         // numero di canali del device: portarlo a mono prima del resample è
         // obbligatorio, perché l'interpolazione lineare su buffer interleaved
