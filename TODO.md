@@ -60,4 +60,4 @@ Oggi `compact_y` vive solo in memoria (`src-tauri/src/commands/window.rs:14`, `W
 
 - [x] Decisione: niente Apple Developer Program, quindi niente firma Developer ID né notarizzazione. Le release su GitHub restano firmate ad-hoc.
 - [x] Installazione su un nuovo Mac: scaricare DMG dalla release, copiare in `/Applications` e lanciare `xattr -cr /Applications/Earwig.app` (rimuove il quarantine che fa comparire "danneggiata" su macOS Sequoia+). Verificato funzionante.
-- [ ] Miglioria possibile senza Apple Developer: documentare il workaround nel README o nell'onboarding dell'app (l'utente non tecnico non lo sa fare da solo).
+- [x] Miglioria possibile senza Apple Developer: workaround documentato nel README (sezione Installazione) e nell'onboarding dell'app (card con il comando, visibile da dentro l'app).

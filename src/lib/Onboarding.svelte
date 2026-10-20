@@ -114,6 +114,24 @@ async function startDownload() {
     </p>
   </div>
 
+  <div
+    class="flex flex-col gap-1 max-w-100 rounded-lg border border-brand-cream/8 bg-brand-dark/40 p-3 text-left"
+  >
+    <span class="text-2xs font-semibold text-ink-primary">
+      Hai visto "Earwig è danneggiata" al primo avvio?
+    </span>
+    <span class="text-2xs leading-relaxed text-ink-secondary">
+      L'app non è notarizzata da Apple e macOS blocca quelle scaricate dal web.
+      Da Terminale esegui
+      <code
+        class="rounded bg-brand-cream/10 px-1 py-0.5 font-mono text-ink-primary"
+      >
+        xattr -cr /Applications/Earwig.app
+      </code>
+      e riaprila: il comando rimuove solo il flag di quarantena.
+    </span>
+  </div>
+
   {#if downloaded}
     <div class="flex flex-col items-center gap-4 max-w-sm w-full">
       <div class="flex flex-col gap-1">
