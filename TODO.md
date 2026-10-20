@@ -50,8 +50,15 @@ Punto di partenza: `src/lib/RecordingsList.svelte:81` (blocco "Durata STT / Badg
 
 Scelta da fare: animare il resize nativo lato Rust (CA transaction/window animation) e tenere il CSS solo per il contenuto, oppure disattivare il CSS e affidarsi al solo resize nativo. Finché non si sceglie un solo padrone dell'animazione, lo scatto resta.
 
+Scelta da fare: animare il resize nativo lato Rust (CA transaction/window animation) e tenere il CSS solo per il contenuto, oppure disattivare il CSS e affidarsi al solo resize nativo. Finché non si sceglie un solo padrone dell'animazione, lo scatto resta.
+
 ## 6. Posizione verticale della modalità ridotta persistente per utente
 
 - [ ] All'avvio la Y della linguetta compatta deve essere quella salvata dell'utente, non recentrata.
 
 Oggi `compact_y` vive solo in memoria (`src-tauri/src/commands/window.rs:14`, `WindowModeState`): a ogni riavvio è `None` e la finestra parte dal centro (`get_screen_bounds`, `window.rs:57`). Se l'utente la sposta verso il basso con `set_compact_y` (`window.rs:172`), la posizione va persistita per utente in `settings.json` (`src-tauri/src/commands/mod.rs:61`) e riletta in setup.
+
+## 7. Distribuzione DMG: firma Developer ID + notarizzazione
+
+- [ ] Le app scaricate dal web senza firma Developer ID + notarizzazione danno "danneggiata" su macOS Sequoia+; workaround locale `xattr -cr /Applications/Earwig.app` (verificato funzionante).
+- [ ] Decisione aperta: iscriversi ad Apple Developer Program (99 $/anno) e aggiungere i secrets `APPLE_CERTIFICATE`/`APPLE_ID`/`APPLE_PASSWORD`/`APPLE_TEAM_ID` a `release.yml` (Tauri firma e notarizza da solo con le env var), oppure distribuire solo con workaround manuale.
