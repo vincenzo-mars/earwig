@@ -331,11 +331,11 @@ async fn run_transcription(app: &AppHandle, path: &str) -> Result<TranscriptResu
             if spec.channels == 2 {
                 let left: Vec<f32> = raw_samples.iter().step_by(2).copied().collect();
                 let right: Vec<f32> = raw_samples.iter().skip(1).step_by(2).copied().collect();
-                let left_res = crate::recorder::audio::resample_linear(&left, spec.sample_rate, 16000);
-                let right_res = crate::recorder::audio::resample_linear(&right, spec.sample_rate, 16000);
+                let left_res = crate::recorder::audio::resample(&left, spec.sample_rate, 16000);
+                let right_res = crate::recorder::audio::resample(&right, spec.sample_rate, 16000);
                 (crate::recorder::audio::interleave_stereo(&left_res, &right_res), 2)
             } else {
-                (crate::recorder::audio::resample_linear(&raw_samples, spec.sample_rate, 16000), 1)
+                (crate::recorder::audio::resample(&raw_samples, spec.sample_rate, 16000), 1)
             }
         } else {
             (raw_samples, spec.channels)

@@ -18,7 +18,8 @@ Punto di partenza: mix e normalizzazione in `src-tauri/src/recorder/audio.rs` (g
 
 ## 3. Qualità della voce in trascrizione
 
-- [ ] Capire se e come si può migliorare la qualità percepita del vocale prima della trascrizione.
+- [x] Diagnostica eseguita: l'aliasing del resample lineare 48k→16k degradava il riconoscimento (verificato con test TTS + esempio `transcribe_wav`). Fix applicato: `resample` con FIR passa-basso anti-alias in `audio.rs`.
+- [ ] Capire se resta margine dopo il fix: quantizzazione int8 (preset fp32 in coda) e pre-processing sul canale mic (AEC3/balance).
 
 Dipende in parte dalla voce 2. Punti da valutare: pre-processing sul canale mic (gate, EQ, loudness), VAD, cosa passa a parakeet (`src-tauri/src/commands/stt.rs`).
 

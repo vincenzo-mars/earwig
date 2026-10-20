@@ -154,7 +154,7 @@ pub async fn import_audio_file(app: AppHandle) -> Result<Option<String>, String>
     };
 
     let mono = audio::to_mono(samples, channels);
-    let mono16k = audio::resample_linear(&mono, sample_rate, TARGET_SAMPLE_RATE);
+    let mono16k = audio::resample(&mono, sample_rate, TARGET_SAMPLE_RATE);
 
     let path = new_recording_path(&app, None).await?;
     audio::write_wav(&mono16k, &path, TARGET_SAMPLE_RATE, 1)?;
@@ -280,7 +280,7 @@ pub async fn stop_recording(
         // obbligatorio, perché l'interpolazione lineare su buffer interleaved
         // mescolerebbe campioni di canali diversi.
         let mic = audio::to_mono(mic_raw, ch);
-        let mic = audio::resample_linear(&mic, mic_native_rate, sr);
+        let mic = audio::resample(&mic, mic_native_rate, sr);
 
         // AEC: rimuove dal mic l'echo acustico delle casse prima di scrivere il
         // file. Non è solo qualità audio: senza, l'audio di sistema rientrato nel

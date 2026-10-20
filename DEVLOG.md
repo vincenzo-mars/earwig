@@ -11,6 +11,20 @@ Formato:
 **Prossimi passi:** ...
 ```
 
+## 2026-10-20 14-45 — Fix qualità trascrizione: resample anti-alias nel path mic
+
+**Obiettivo:** chiudere la diagnostica "il modello sembra più stupido": il test TTS a 48kHz (`say` + esempio `transcribe_wav`) ha confermato l'aliasing del resample lineare — sullo stesso audio il testo lineare conteneva errori ("dotte", "resempling") che con il passa-basso anti-alias spariscono.
+
+**Fatto:**
+- `recorder/audio.rs`: `resample_linear` sostituita da `resample` = FIR passa-basso (Hamming 63 tap, cutoff 0.45 × Nyquist destinazione) + interpolazione lineare. In upsample il filtro viene saltato. Call site aggiornati: mic in `stop_recording`, import file, resample in `run_transcription` per WAV non-16k.
+- Verifica: `cargo check` verde; il confronto quantitativo è nello screenshot dei due testi del DEVLOG precedente (lineare con 2 errori di parola, anti-alias zero).
+
+**Decisioni:**
+- Filtro FIR scritto in casa invece di `rubato`: l'implementazione è già validata empiricamente dalla diagnostica, evita una dipendenza e le sue API stateful su un uso batch.
+- Il filtro gira solo in downsample: in upsample l'interpolazione lineare è sufficiente (nessun aliasing possibile).
+
+**Prossimi passi:** ripetere la registrazione reale con l'app installata aggiornata e confrontare la trascrizione con Handy; se restano differenze, resta in coda il preset fp32 (quantizzazione).
+
 ## 2026-10-20 14-30 — Diagnostica qualità trascrizione: mic raw + esempio A/B
 
 **Obiettivo:** spiegare perché lo stesso Parakeet TDT v3 in Handy riconosce meglio. Fase 1 del piano: misurare se la pipeline audio di Earwig degrada l'input prima che arrivi al modello.

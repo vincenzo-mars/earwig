@@ -36,10 +36,26 @@ pub fn to_mono(samples: Vec<f32>, channels: u16) -> Vec<f32> {
 ///
 /// Assume un buffer **mono**: su audio interleaved interpolerebbe fra canali
 /// diversi, quindi va sempre chiamato dopo `to_mono`.
-pub fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+/// Resample con anti-alias: filtro passa-basso FIR (Hamming, 63 tap, cutoff a
+/// 0.45 × Nyquist destinazione) prima della decimazione, poi interpolazione
+/// lineare. Il resample lineare puro ripiega lo spettro sopra Nyquist
+/// destinazione dentro la banda vocale (48k → 16k aliasa 24-8kHz: sibilanti e
+/// fricative corrotte) e degrada l'ASR in modo misurabile: la diagnostica con
+/// l'esempio `transcribe_wav` mostra errori di parole ("dotte", "resempling")
+/// che con il passa-basso spariscono. In upsample il filtro non serve.
+pub fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     if from_rate == to_rate {
         return samples.to_vec();
     }
+    let filtered = if from_rate > to_rate {
+        lowpass(samples, from_rate, to_rate)
+    } else {
+        samples.to_vec()
+    };
+    linear_interp(&filtered, from_rate, to_rate)
+}
+
+fn linear_interp(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     let ratio = from_rate as f64 / to_rate as f64;
     let out_len = (samples.len() as f64 / ratio).round() as usize;
     let mut out = Vec::with_capacity(out_len);
@@ -52,6 +68,46 @@ pub fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32
         out.push(a + (b - a) * frac);
     }
     out
+}
+
+fn lowpass(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
+    const TAPS: usize = 63;
+    let cutoff = (from_rate.min(to_rate) as f32) * 0.45;
+    let nyquist = from_rate as f32 / 2.0;
+    let fc = (cutoff / nyquist).clamp(0.01, 0.99);
+    let mid = (TAPS - 1) as f32 / 2.0;
+
+    let mut kernel: Vec<f32> = (0..TAPS)
+        .map(|n| {
+            let x = n as f32 - mid;
+            let sinc = if x.abs() < f32::EPSILON {
+                1.0
+            } else {
+                (std::f32::consts::PI * fc * x).sin() / (std::f32::consts::PI * fc * x)
+            };
+            let hamming =
+                0.54 - 0.46 * (2.0 * std::f32::consts::PI * n as f32 / (TAPS - 1) as f32).cos();
+            sinc * hamming
+        })
+        .collect();
+    let sum: f32 = kernel.iter().sum();
+    for k in &mut kernel {
+        *k /= sum;
+    }
+
+    let half = TAPS / 2;
+    (0..samples.len())
+        .map(|i| {
+            let mut acc = 0.0f32;
+            for k in 0..TAPS {
+                let xi = i as isize + k as isize - half as isize;
+                if xi >= 0 && (xi as usize) < samples.len() {
+                    acc += samples[xi as usize] * kernel[k];
+                }
+            }
+            acc
+        })
+        .collect()
 }
 
 /// Intreccia mic e audio di sistema in un buffer stereo (mic a sinistra, sistema

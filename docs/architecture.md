@@ -18,11 +18,13 @@ Per la superficie API (comandi Tauri, tipi, componenti Svelte) vedi [`reference.
 [mic_samples: Arc<Mutex<Vec<f32>>>]  [sys_samples: Arc<Mutex<Vec<f32>>>]
     │                               │
     ▼                               │
-[audio::to_mono()]                  │  downmix esplicito: resample_linear su
+[audio::to_mono()]                  │  downmix esplicito: resample su
     │                               │  buffer interleaved mescolerebbe i canali
     ▼                               │
-[audio::resample_linear()]          │  solo il mic: cpal non forza un rate,
+[audio::resample()]                 │  solo il mic: cpal non forza un rate,
 mic_native_rate → 16kHz             │  sys arriva già a TARGET_SAMPLE_RATE
+passa-basso FIR anti-alias +        │
+interpolazione lineare              │
     │                               │
     └──────────┬────────────────────┘
                ▼
@@ -109,8 +111,8 @@ Se la cattura di sistema fallisce la registrazione **non** si interrompe: l'erro
 | `active_speech_rms(&[f32], frame_size) -> f32` | Calcola l'RMS del parlato attivo (top 30% frame energetici), ignorando silenzi e rumore di fondo |
 | `normalize_speech(Vec<f32>, target_rms) -> Vec<f32>` | Normalizza il livello del parlato a un target RMS con limiter di picco (max 0.95) e cap al guadagno (max 10x) |
 | `balance_speech_levels(mic, sys) -> Vec<f32>` | Allinea l'RMS attivo del microfono a quello del sistema per evitare squilibri stereo e allucinazioni Whisper |
-| `to_mono(Vec<f32>, channels) -> Vec<f32>` | Prende ownership per restituire il buffer intatto quando è già mono. Va sempre chiamata **prima** di `resample_linear` |
-| `resample_linear(&[f32], from, to)` | Interpolazione lineare pura-Rust, nessuna dipendenza esterna. Assume input **mono** |
+| `to_mono(Vec<f32>, channels) -> Vec<f32>` | Prende ownership per restituire il buffer intatto quando è già mono. Va sempre chiamata **prima** di `resample` |
+| `resample(&[f32], from, to)` | Passa-basso FIR anti-alias (Hamming 63 tap, cutoff 0.45 × Nyquist destinazione) + interpolazione lineare, nessuna dipendenza esterna. Assume input **mono**. Il resample lineare puro (sostituito) aliasava lo spettro sopra Nyquist nel banda vocale e degradava l'ASR in modo misurabile |
 | `interleave_stereo(left, right)` | Intreccia mic e sistema zero-paddando il più corto |
 | `write_wav(&[f32], path, rate, channels)` | `hound`, Int16 PCM |
 
