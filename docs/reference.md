@@ -22,13 +22,14 @@ Gli helper di percorso (`model_dir`, `local_model_path`, `recordings_dir`, `bund
 
 | Command | Input | Output | Effetti |
 |---|---|---|---|
-| `download_local_model` | — | `Result<(), String>` | Scarica in streaming da Hugging Face i 3 file di Parakeet TDT 0.6B v3 (`vocab.txt`, `encoder-model.int8.onnx`, `decoder_joint-model.int8.onnx`) su file `.part` temporanei, emette `download-progress`, fa rename atomico e aggiorna `local_ready` |
+| `get_stt_presets` | — | `Vec<SttModelPreset>` | Preset del modello STT scaricabile (`parakeet-v3-int8` ~671MB, `parakeet-v3-fp32` ~2.55GB) con etichette per la UI |
+| `download_local_model` | — | `Result<(), String>` | Scarica in streaming da Hugging Face i file del preset selezionato (`sttModelId` in `settings.json`: int8 = `vocab.txt` + `encoder-model.int8.onnx` + `decoder_joint-model.int8.onnx`; fp32 = versioni non quantizzate + `encoder-model.onnx.data`) su file `.part` temporanei, emette `download-progress`, fa rename atomico, rimuove la cartella del preset precedente (una sola installazione) e azzera la cache del motore |
 | `start_stt_server` | — | `Result<(), String>` | Preriscalda in-process la sessione ONNX `ParakeetTDT` nello stato gestito `SttEngineState` se il modello è presente su disco |
 | `stop_stt_server` | — | `Result<(), String>` | Rilascia la sessione del motore in-process impostando `SttEngineState` a `None`, liberando istantaneamente la RAM |
 | `restart_stt_server` | — | `Result<(), String>` | `stop_stt_server` + `start_stt_server` (scarica e ricarica la sessione ONNX in memoria) |
-| `delete_local_model` | — | `Result<(), String>` | Rilascia il motore in-process e cancella la cartella del modello `parakeet-tdt-0.6b-v3` dal disco |
-| `check_stt_server` | — | `String` | `"running"` se i file del modello sono presenti su disco, oppure `"stopped"` |
-| `transcribe_recording` | `path: String` | `Result<TranscriptResult, String>` | Trascrizione in-process con Parakeet TDT 0.6B v3 a chunk di 120s: de-interleave stereo per diarizzazione fisica ("0" Tu, "1" Altri), scrive `transcript.json` con `transcription_ms`, genera `transcript.md` con frontmatter YAML per Obsidian (e lo copia in `transcripts_dir` se configurata), e rimuove l'eventuale `transcript_error.json` (o lo genera in caso di fallimento) |
+| `delete_local_model` | — | `Result<(), String>` | Rilascia il motore in-process e cancella dal disco la cartella del modello selezionato |
+| `check_stt_server` | — | `String` | `"running"` se i file del modello selezionato sono presenti su disco, oppure `"stopped"` |
+| `transcribe_recording` | `path: String` | `Result<TranscriptResult, String>` | Trascrizione in-process con Parakeet TDT 0.6B v3: se accanto al WAV c'è `mic_asr.wav` (mono 16k senza gain, scritto da `stop_recording` con strategia mic nudo/AEC decisa dal rilevamento leakage) il canale Tu trascrive da lì e l'Altri dal destro del WAV stereo, altrimenti catena storica. Blocchi ~120s tagliati sui silenzi (frame più silenzioso in una finestra ±5s). Scrive `transcript.json` con `transcription_ms`, genera `transcript.md` con frontmatter YAML per Obsidian (e lo copia in `transcripts_dir` se configurata), e rimuove l'eventuale `transcript_error.json` (o lo genera in caso di fallimento) |
 
 ### LLM locale (`commands/llm.rs`)
 
@@ -67,15 +68,10 @@ Gli helper di percorso (`model_dir`, `local_model_path`, `recordings_dir`, `bund
 | `get_transcripts_dir` | — | `String` | Ritorna il percorso effettivo per le note Markdown (vault personalizzato o fallback su `recordings_dir`) |
 | `set_transcripts_dir` | `path: Option<String>` | `Result<String, String>` | Aggiorna `transcripts_dir` in `settings.json` (`None` per ripristinare il default); crea la directory se mancante e ne ritorna il path |
 
-### Gestione finestra e modalità ridotta (`commands/window.rs`)
+### Gestione finestra e Dock (`commands/window.rs`)
 
 | Command | Input | Output | Effetti |
 |---|---|---|---|
-| `set_compact_mode` | `enabled: bool` | `Result<(), String>` | Alterna fra la finestra standard (640x720 con decorazioni native) e la modalità ridotta ancorata al bordo destro dello schermo (senza decorazioni, always-on-top). All'attivazione carica da `settings.json` la Y persistita se in sessione non c'è ancora stato un drag; salva e ripristina coordinate e dimensioni |
-| `set_compact_hover` | `hovered: bool, is_recording: bool` | `Result<(), String>` | Adatta dinamicamente larghezza e posizione X della finestra compatta in base al passaggio del mouse e allo stato di registrazione. Il timing è governato dal frontend: l'espansione nativa parte a hover-start, il restringimento arriva ~220ms dopo il mouseleave, quando la transizione CSS è finita |
-| `set_compact_y` | `y: f64` | `Result<(), String>` | Sposta verticalmente la barra compatta lungo il bordo dello schermo con clamping tra menu bar e dock macOS. Aggiorna solo lo stato in memoria |
-| `save_compact_y` | — | `Result<(), String>` | Persiste in `settings.json` l'ultima Y impostata con `set_compact_y`; chiamato dal frontend a fine drag |
-| `get_compact_position` | — | `Result<(f64, f64), String>` | Ritorna le coordinate correnti (X, Y) logiche della finestra compatta per il drag |
 | `show_dashboard` | — | `Result<(), String>` | Mostra, rimuove dalla minimizzazione e porta in primo piano la finestra principale, impostando la policy del Dock a `Regular` |
 | `hide_dashboard` | — | `Result<(), String>` | Nasconde la finestra e imposta la policy del Dock a `Accessory` (rimossa dal Dock a meno che non sia fissata) |
 
@@ -221,27 +217,7 @@ Il riallineamento manuale dell'entry aperta dopo un rilancio non serve più: lis
 
 ### `Recorder.svelte`
 
-La home: hero REC in alto e `RecordingsList` sotto. Bottone REC/STOP con timer integrato su tasto stop opaco, stato intermedio `isStopping` ("Salvataggio e cancellazione eco..." con spinner), pulsante d'importazione file circolare allineato a destra, dock di stato inferiore ad altezza bloccata (badge salvataggio/trascrizione con `LoaderCircle` ed eventuale errore): tutto letto da `session`, nessuna prop. Ospita anche la toolbar in alto a destra (`fixed right-6 top-6 z-10`) con il pulsante per attivare la modalità ridotta a bordo schermo (`PanelRightClose`) e il pulsante delle impostazioni (`Settings`).
-
-### `CompactStrip.svelte`
-
-Linguetta compatta per la modalità ridotta ancorata al bordo destro dello schermo. Adotta una grafica macOS premium pulita e coerente con i toni scuri e caldi dell'app (`bg-brand-darker/95`, `border-brand-cream/15`, dot caldo `bg-rec`/`bg-danger`), senza animazioni appariscenti o effetti neon.
-
-- **I 2 stati della linguetta**:
-  1. **Idle (non hover)**: sporge dal bordo solo una linguetta discreta aumentata a `w-[12px]` (`rounded-l-2xl`) con un sobrio micro-dot fisso. La finestra ha ingombro minimo (18px) e non intercetta click esterni.
-  2. **Hover (sopra la linguetta)**: la linguetta si allarga a soli `w-[82px]` con layout ultra-compatto:
-    - Spazio azzerato tra bordo sinistro e pulsante REC/STOP.
-    - Pulsante circolare REC/STOP senza timer (icona Play centrata poco a destra con `translate-x-0.5`, stop square in registrazione).
-    - Icona `Maximize2` per espandere a schermo intero nuda e cliccabile (senza round button, solo icona con hover reattivo `text-ink-faint` → `text-ink-primary`).
-    - I 6 puntini verticali `GripVertical` posizionati a ridosso del bordo schermo destro.
-- **Spostamento verticale (Draggable)**: trascinando l'icona a 6 puntini verticali `GripVertical` tutta a destra, la linguetta si sposta in altezza lungo il bordo destro dello schermo (`set_compact_y`), con clamp automatico sopra al dock e sotto la menu bar.
-- Interagisce direttamente con `commands::window` (`set_compact_hover`, `set_compact_y`, evento `compact-stage`) e `session.setCompactMode`.
-
-Il bottone REC/STOP (`h-32 w-32`) vive dentro un bezel esterno concentrico (`p-2.5 rounded-full border border-brand-cream/10 bg-brand-darker/60 shadow-raised`). Adotta uno stile visivo minimale e pulito coerente con gli altri bottoni dell'app: ombre neutre (`shadow-raised`), transizione fluida del colore a 200ms (`bg-rec` → `enabled:hover:bg-rec-strong`), lieve micro-scale all'hover (`enabled:hover:scale-[1.02]`) e feedback tattile alla pressione (`enabled:active:scale-[0.96]`), senza glow o rilievi 3D artificiali. A riposo mostra l'icona di play watermark coordinata (`Play size={88} fill="currentColor" text-black/10 -translate-x-[1.5px] scale-y-[1.08]`), senza testo né dot bianco, con accessibilità garantita da `aria-label` in italiano. Durante il salvataggio (`session.isStopping`), il bottone si disabilita e mostra uno spinner centrale per evitare clic multipli e corse critiche. In registrazione, mostra al centro il cronometro ingrandito `tabular-nums` in tempo reale (`formatDuration`, `text-lg font-bold`) centrato verticalmente, con alle spalle sull'asse z un quadrato di stop watermark molto discreto (`size-16 rounded-lg bg-black/10`) che suggerisce visivamente la funzione di stop senza rumore testuale. A destra del REC siede il pulsante circolare "Carica file audio" (`Button variant="icon"` con icona `Upload`), fisso e disabilitato durante registrazione e salvataggio.
-
-Sotto al bottone, un dock ad altezza bloccata (`h-8 w-full max-w-md`) alloggia la pillola di salvataggio/trascrizione in corso (con spinner `LoaderCircle` e tempo trascorso) o i messaggi di blocco/errore in italiano. L'altezza fissa del dock azzera qualunque layout shift della sezione "Registrazioni" sottostante durante l'intero ciclo di vita della sessione.
-
-Dopo uno STOP o un import riusciti chiama `recordings.load(true)`: la lista sta nella stessa schermata e senza quel refresh la registrazione appena fatta non comparirebbe. Il refresh vive qui e non dentro `session` perché la direzione delle dipendenze fra store è `recordings → session`, non il contrario.
+La home: hero REC in alto e `RecordingsList` sotto. Bottone REC/STOP con timer integrato su tasto stop opaco, stato intermedio `isStopping` ("Salvataggio e cancellazione eco..." con spinner), pulsante d'importazione file circolare allineato a destra, dock di stato inferiore ad altezza bloccata (badge salvataggio/trascrizione con `LoaderCircle` ed eventuale errore): tutto letto da `session`, nessuna prop. Ospita anche la toolbar in alto a destra (`fixed right-6 top-6 z-10`) con il pulsante delle impostazioni (`Settings`).
 
 ### `RecordingsList.svelte`
 
@@ -269,7 +245,7 @@ Nessuno stato ha sfondo o ombra: a riposo in alto a sinistra si presenta con il 
 
 ### `Onboarding.svelte`
 
-View a schermo intero (non un modal), mostrata da `App.svelte` al posto della UI normale quando `!modelReady`. Logo (`public/icon.png`), titolo e sottotitolo fissi, poi tre stati in sequenza: CTA "Scarica il modello" → progress bar sull'evento `download-progress` (stesso comando `download_local_model` e stesso evento di `SettingsPanel`) con il messaggio "prenditi un caffè" visibile solo mentre `downloading` è vero → configurazione opzionale della cartella per le note Markdown, toggle per l'avvio automatico con il Mac in background (abilitato di default via `@tauri-apps/plugin-autostart`) e bottone "Inizia a usare Earwig". Nessun bottone "salta": l'unica uscita è un download riuscito. Sotto il sottotitolo una card fissa spiega il dialogo "Earwig è danneggiata" (app non notarizzata: da Sequoia+ macOS blocca i download senza firma Developer ID) con il comando `xattr -cr /Applications/Earwig.app`, unica documentazione del workaround visibile dall'interno dell'app.
+View a schermo intero (non un modal), mostrata da `App.svelte` al posto della UI normale quando `!modelReady`. Logo (`public/icon.png`), titolo e sottotitolo fissi, poi tre stati in sequenza: CTA "Scarica il modello" preceduta dalla scelta del preset del modello STT (`get_stt_presets`, Consigliato pre-selezionato: la scelta viene salvata in `sttModelId` prima del download) → progress bar sull'evento `download-progress` (stesso comando `download_local_model` e stesso evento di `SettingsPanel`) con il messaggio "prenditi un caffè" visibile solo mentre `downloading` è vero → configurazione opzionale della cartella per le note Markdown, toggle per l'avvio automatico con il Mac in background (abilitato di default via `@tauri-apps/plugin-autostart`) e bottone "Inizia a usare Earwig". Nessun bottone "salta": l'unica uscita è un download riuscito. Sotto il sottotitolo una card fissa spiega il dialogo "Earwig è danneggiata" (app non notarizzata: da Sequoia+ macOS blocca i download senza firma Developer ID) con il comando `xattr -cr /Applications/Earwig.app`, unica documentazione del workaround visibile dall'interno dell'app.
 
 Prop: `onContinue: () => void`, chiamata dal bottone di continuazione; `App.svelte` la collega a `servers.refreshStt()` così `modelReady` si aggiorna e il rendering torna da solo alla UI normale, senza che `Onboarding` gestisca la propria visibilità.
 
@@ -279,7 +255,7 @@ Componente riutilizzabile per le sezioni collassabili (`id?`, `title`, `icon`, `
 
 ### `SettingsPanel.svelte`
 
-Modale `/settings` (incapsulata in `Modal.svelte`, `maxWidth="max-w-xl"`) con permessi OS, cartella registrazioni, cartella note Markdown, download del modello vocale STT, controlli del server STT e percorsi. L'interfaccia è organizzata in sezioni collassabili animate con `AccordionSection.svelte`, tutte aperte di default senza alcuna animazione al landing.
+Modale `/settings` (incapsulata in `Modal.svelte`, `maxWidth="max-w-xl"`) con permessi OS, scelta del preset del modello STT (radio su `get_stt_presets`: il cambio salva `sttModelId` e lancia subito il download della nuova variante, sostituendo quella precedente), cartella registrazioni, cartella note Markdown, download del modello vocale STT, controlli del server STT e percorsi. L'interfaccia è organizzata in sezioni collassabili animate con `AccordionSection.svelte`, tutte aperte di default senza alcuna animazione al landing.
 
 Supporta il deep-linking con auto-scroll tramite querystring (es. `/settings?section=stt-server`): un `$effect` reattivo su `router.querystring` individua l'elemento target, ne assicura l'apertura se collassato ed esegue lo scroll fluido automatico (`scrollIntoView({ behavior: "smooth", block: "start" })`).
 

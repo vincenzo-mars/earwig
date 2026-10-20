@@ -11,6 +11,41 @@ Formato:
 **Prossimi passi:** ...
 ```
 
+## 2026-10-20 15-40 — Rimossa la modalità ridotta (edge drawer / mini bar)
+
+**Obiettivo:** eliminare la visualizzazione mini a bordo schermo (linguetta edge drawer con il suo pulsante REC), su richiesta: l'unico modo di avviare una registrazione resta il REC della dashboard.
+
+**Fatto:**
+- Frontend: eliminato `CompactStrip.svelte`; rimossi stato `isCompact` e `setCompactMode` da `session.svelte.ts`, bottone `PanelRightClose` e la relativa branch/Classi `compact-mode` da `App.svelte`, stili `compact-mode` (sfondo trasparente) da `App.css`.
+- Backend: da `commands/window.rs` rimossi `set_compact_mode`/`set_compact_hover`/`set_compact_y`/`save_compact_y`/`get_compact_position` con `WindowModeState`/`SavedWindowState` e le costanti di size; rimosso campo `compactY` da `SttSettings` (`mod.rs`); deregistrati i comandi e il manage dello state in `lib.rs`. Restano `set_dock_visible`/`show_dashboard`/`hide_dashboard` e la tray icon.
+- Doc: rimosse le sezioni dedicate da `docs/architecture.md` e `docs/reference.md`, aggiornato `README.md`.
+
+**Decisioni:**
+- Tray icon (Impostazioni / Esci) e gestione dinamica del Dock restano: era la parte "sempre attiva" utile. Toltà solo la mini-barra a bordo schermo con la sua azione REC.
+- `transparent: true` / `macOSPrivateApi` in `tauri.conf.json` lasciati intatti: non necessari ma innocui con lo sfondo solido, evitiamo cambi di config non richiesti.
+- Campo `compactY` rimosso dallo struct; `settings.json` vecchi che lo contengono restano validi (serde ignora i campi sconosciuti).
+
+**Prossimi passi:** nessuno, chiuso.
+
+## 2026-10-20 15-10 — Trascrizione-first: preset modello int8/fp32 e ASR input ottimizzato
+
+**Obiettivo:** far trascrivere le call con la stessa precisione di Handy (stesso modello Parakeet v3, input diverso). Tre leve decise con l'utente: input ASR senza gain, scelta di precisione int8/fp32, chunking sui silenzi.
+
+**Fatto:**
+- **Preset modello** (`stt.rs`, `mod.rs`): tabella `STT_PRESETS` (int8 ~671MB con dir storica, fp32 ~2.55GB con `encoder-model.onnx.data`), `sttModelId` in settings (serde default int8), `local_parakeet_dir`/`is_stt_model_ready` per preset, `download_local_model` sostituisce la dir del preset precedente e azzera la cache del motore, nuovo comando `get_stt_presets` per la UI.
+- **Input ASR adattivo** (`recording.rs`, `audio.rs`): `channels_correlated` confronta gli inviluppi RMS mic/sistema (frame 50ms, lag ±500ms) per distinguere cuffie da altoparlanti. Con cuffie il canale Tu trascrive il mic nudo (zero processing); con altoparlanti il mic AEC-only (il leakage va rimosso, altrimenti le parole dell'altro finirebbero nel testo Tu). Il canale Altri è audio digitale pulito e va al modello com'è. Il segnale mic ottimizzato viene salvato come `mic_asr.wav` (mono 16k, senza gain): `run_transcription` lo preferisce quando esiste, con fallback alla catena storica per i WAV vecchi.
+- **Gain solo sull'ascolto**: `balance_speech_levels`/`normalize_speech` restano sul WAV stereo salvato ma non toccano più l'input ASR (prima c'era un doppio AGC: GainController2 di WebRTC + il nostro boost fino a +20dB).
+- **Chunking sui silenzi** (`stt.rs`): i blocchi da ~120s si spezzano nel frame più silenzioso di una finestra ±5s, niente più tagli a metà parola.
+- **UI**: radio preset in `SettingsPanel` (download immediato al cambio) e due card in `Onboarding` (Consigliato pre-selezionato); `sttModelId` esposto in `types.ts`.
+
+**Decisioni:**
+- Il sistema audio resta registrato (l'utente registra call) e la diarizzazione Tu/Altri resta: la semplificazione non tocca il prodotto.
+- AEC mantenuto solo quando serve davvero (leakage rilevato): con cuffie era processing gratuito che degradava la voce.
+- Nessun URL custom per il modello: solo preset curati, scelto con l'utente.
+- fp32 nel repo istupakov usa pesi esterni `.data`: se onnxruntime non li risolve, il preset si ritira (rischio monitorato).
+
+**Prossimi passi:** smoke test record→transcribe su `tauri dev` (cuffie e altoparlanti), switch int8→fp32 con trascrizione reale, `fresh-install` per l'onboarding.
+
 ## 2026-10-20 14-45 — Fix qualità trascrizione: resample anti-alias nel path mic
 
 **Obiettivo:** chiudere la diagnostica "il modello sembra più stupido": il test TTS a 48kHz (`say` + esempio `transcribe_wav`) ha confermato l'aliasing del resample lineare — sullo stesso audio il testo lineare conteneva errori ("dotte", "resempling") che con il passa-basso anti-alias spariscono.

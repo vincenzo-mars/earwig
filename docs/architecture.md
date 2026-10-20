@@ -40,16 +40,21 @@ interpolazione lineare              │
         [audio::interleave_stereo()]   mic → canale L, sistema → canale R
                │                       (senza audio di sistema resta mono)
                ▼
-        [audio::write_wav()]           WAV Int16 PCM, 16kHz
-               │
+        [audio::write_wav()]           WAV Int16 PCM, 16kHz; scrive anche
+               │                       mic_asr.wav: canale Tu per l'ASR (mono
+               │                       16k senza gain: mic nudo con cuffie,
+               │                       mic AEC-only con altoparlanti)
                ▼
+        [<timestamp>/mic_asr.wav]
+               │
         [<timestamp>/recording.wav]
                │
                ▼
    [transcribe_recording()]            In-process Parakeet TDT 0.6B v3 (ONNX)
-   de-interleave stereo:               Nessun server esterno né porta 8080.
-   canale L (mic) → YOU ("0")          Segmentazione in frasi naturali.
-   canale R (sys) → THEM ("1")
+   se c'è mic_asr.wav:                 Nessun server esterno né porta 8080.
+   canale Tu da mic_asr.wav ("0")      Blocchi ~120s tagliati sui silenzi.
+   canale R (sys) → THEM ("1")         I WAV stereo legacy seguono la catena
+                                       storica.
                │
                ▼
    [TranscriptResult]                  segments[].speaker = "0" | "1" | None
@@ -233,17 +238,6 @@ Generazione automatica del riassunto solo se `llmStatus === "running"` all'apert
 ### Onboarding: nessun gate
 
 Il download/scelta del modello LLM è opzionale e lazy: `Onboarding.svelte` resta invariato e riguarda solo whisper (nulla funziona senza), la chat è puramente additiva su un'app che già registra e trascrive.
-
-### Modalità ridotta (Edge drawer / Mini bar)
-
-La modalità ridotta (`set_compact_mode`, `set_compact_hover`, `set_compact_y`, `get_compact_position` in `commands/window.rs`, con UI in `CompactStrip.svelte`) permette di tenere Earwig sempre attivo ancorato al bordo destro dello schermo in background con una linguetta minimal in stile macOS premium (colori coerenti con l'app, senza animazioni fancy):
-- **Trasparenza nativa**: finestra configurata con `transparent: true` e `macOSPrivateApi: true` in `tauri.conf.json`, feature `macos-private-api` abilitata per `tauri` in `Cargo.toml`, e classe `compact-mode` su `html`, `body` e `#app` con `background: transparent !important`.
-- **I 2 stati della linguetta**:
-  1. **Idle (non hover)**: sporge solo una linguetta discreta aumentata a `w-[12px]` dal bordo destro dello schermo con un sobrio micro-dot; l'ingombro della finestra è di soli 18px per non intralciare i click su altre app.
-  2. **Hover (sopra la linguetta)**: la linguetta si allarga a `w-[82px]` con layout ultra-compatto senza timer: a sinistra il pulsante REC/STOP circolare (con icona Play centrata poco a destra), affiancato all'icona nuda cliccabile `Maximize2` (senza round button) e ai 6 puntini verticali `GripVertical` posizionati a ridosso del bordo schermo. Zero polling in background, transizione fluida e reattiva guidata dagli eventi del puntatore.
-- **Spostamento verticale (Draggable)**: tramite l'icona grip `GripVertical` l'utente può trascinare liberamente la barra su e giù lungo il bordo destro dello schermo (`set_compact_y`), con clamping automatico per evitare la barra dei menu di macOS in alto e il Dock in basso. La Y persiste tra un avvio e l'altro: a fine drag il frontend chiama `save_compact_y` che la scrive in `settings.json` (campo `compactY`, `#[serde(default)]`), e `set_compact_mode` all'attivazione la ricarica se in sessione non c'è già stato un drag.
-- **Animazione di hover a padrone unico**: la larghezza è animata dal CSS del webview (`transition-[width]` 200ms), mentre il resize nativo della finestra è istantaneo ma governato dal frontend: cresce a hover-start (verso sinistra, invisibile su sfondo trasparente) e si restringe solo ~220ms dopo il mouseleave, quando la transizione è finita e il contenuto è già larghissimo 12px. Un rientro del cursore nel frattempo annulla il restringimento. Prima di questo accordo le due animazioni correvano in parallelo e il contenuto veniva clippato dalla finestra già ristretta a metà transizione.
-- **Transizione ridotta → normale**: ripristina decorazioni native, disattiva `always_on_top`, riapplica i vincoli di dimensione minima e riposiziona la finestra alle coordinate precedenti.
 
 ### Tray Icon (Menu Bar) e Gestione Dinamica del Dock
 

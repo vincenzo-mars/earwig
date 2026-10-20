@@ -5,12 +5,14 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import Button from "./Button.svelte";
 import DownloadProgressBar from "./DownloadProgressBar.svelte";
-import type { DownloadProgress, SttSettings } from "./types";
+import type { DownloadProgress, SttModelPreset, SttSettings } from "./types";
 
 let { onContinue }: { onContinue: () => void } = $props();
 
 let downloading = $state(false);
 let downloaded = $state(false);
+let presets = $state<SttModelPreset[]>([]);
+let selectedModel = $state("parakeet-v3-int8");
 let dlProgress = $state<DownloadProgress | null>(null);
 let error = $state<string | null>(null);
 let transcriptsDir = $state<string | null>(null);
@@ -52,6 +54,12 @@ $effect(() => {
   invoke<SttSettings>("get_stt_settings").then((s) => {
     transcriptsDir = s.transcriptsDir;
   });
+  invoke<SttModelPreset[]>("get_stt_presets").then((p) => {
+    presets = p;
+    if (!p.some((preset) => preset.id === selectedModel)) {
+      selectedModel = p[0]?.id ?? "parakeet-v3-int8";
+    }
+  });
 
   const unlisten = listen<DownloadProgress>("download-progress", (e) => {
     dlProgress = e.payload;
@@ -89,6 +97,10 @@ async function startDownload() {
   downloading = true;
   dlProgress = null;
   try {
+    const settings = await invoke<SttSettings>("get_stt_settings");
+    await invoke("save_stt_settings", {
+      settings: { ...settings, sttModelId: selectedModel },
+    });
     await invoke("download_local_model");
   } catch (e) {
     downloading = false;
@@ -223,6 +235,32 @@ async function startDownload() {
       Nel mentre puoi anche prenderti un caffè, ma non uscire dall'app!
     </p>
   {:else}
+    <div class="flex w-full max-w-80 flex-col gap-1.5">
+      {#each presets as preset (preset.id)}
+        <button
+          type="button"
+          class={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+            selectedModel === preset.id
+              ? "border-brand-cream/25 bg-brand-cream/[0.06]"
+              : "border-brand-cream/8 bg-brand-dark/40 hover:border-brand-cream/20"
+          } cursor-pointer`}
+          onclick={() => (selectedModel = preset.id)}
+        >
+          <span
+            class={`text-xs ${selectedModel === preset.id ? "font-medium text-ink-primary" : "text-ink-secondary"}`}
+          >
+            {preset.label}
+          </span>
+          {#if selectedModel === preset.id}
+            <span
+              class="inline-flex items-center rounded-full border border-ok/20 bg-ok/10 px-2 py-0.5 text-2xs font-medium text-ok"
+            >
+              Selezionato
+            </span>
+          {/if}
+        </button>
+      {/each}
+    </div>
     <Button variant="solid" class="px-6 py-2.5 text-sm" onclick={startDownload}>
       Scarica il modello
     </Button>

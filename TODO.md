@@ -19,7 +19,8 @@ Punto di partenza: mix e normalizzazione in `src-tauri/src/recorder/audio.rs` (g
 ## 3. Qualità della voce in trascrizione
 
 - [x] Diagnostica eseguita: l'aliasing del resample lineare 48k→16k degradava il riconoscimento (verificato con test TTS + esempio `transcribe_wav`). Fix applicato: `resample` con FIR passa-basso anti-alias in `audio.rs`.
-- [ ] Capire se resta margine dopo il fix: quantizzazione int8 (preset fp32 in coda) e pre-processing sul canale mic (AEC3/balance).
+- [x] Input ASR ottimizzato: mic nudo con cuffie (leakage rilevato automaticamente), mic AEC-only con altoparlanti, niente doppio AGC sull'input; scelta preset int8/fp32 in Settings e Onboarding.
+- [ ] Verifica finale su call reale: trascrizione Tu/Altri alla pari di Handy. Se resta margine, valutare VAD e pre-processing mic.
 
 Dipende in parte dalla voce 2. Punti da valutare: pre-processing sul canale mic (gate, EQ, loudness), VAD, cosa passa a parakeet (`src-tauri/src/commands/stt.rs`).
 

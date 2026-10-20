@@ -1,6 +1,12 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export interface SttModelPreset {
+  id: string;
+  label: string;
+}
+
 export interface SttSettings {
+  sttModelId: string;
   localReady: boolean;
   modelDir: string | null;
   recordingsDir: string | null;
