@@ -5,25 +5,26 @@ on:
   push:
     branches:
       - develop
-      - 'feat/**'
-      - 'fix/**'
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   frontend-check:
     name: Frontend Lint & Typecheck
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies
@@ -37,15 +38,19 @@ jobs:
 
   rust-check:
     name: Rust Check
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Select newest Xcode
+      - name: Select pinned Xcode
         run: |
-          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          echo "Using $XCODE"
+          XCODE=/Applications/Xcode_26.3.0.app
+          if [ ! -d "$XCODE" ]; then
+            echo "Xcode 26.3.0 non presente sul runner. Disponibili:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
           sudo xcode-select -s "$XCODE"
           xcodebuild -version && xcrun --sdk macosx --show-sdk-version
 
