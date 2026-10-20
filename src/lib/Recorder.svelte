@@ -1,5 +1,5 @@
 <script lang="ts">
-import { PanelRightClose, Play, Settings, Upload } from "@lucide/svelte";
+import { Play, Settings, Upload } from "@lucide/svelte";
 import { fade } from "svelte/transition";
 import { push } from "svelte-spa-router";
 import Button from "./Button.svelte";
@@ -56,15 +56,6 @@ function isAlreadyRecording(err: string) {
      hanno già il loro header, e un bottone flottante in alto a destra si
      sovrapporrebbe alle loro azioni. -->
 <div class="fixed right-6 top-6 z-10 flex items-center gap-2">
-  <Button
-    variant="icon"
-    onclick={() => session.setCompactMode(true)}
-    title="Modalità ridotta (bordo schermo)"
-    aria-label="Attiva modalità ridotta"
-  >
-    <PanelRightClose size={16} />
-  </Button>
-
   <Button
     variant="icon"
     class="relative"

@@ -14,7 +14,7 @@
 - Trascrive in italiano con **Parakeet TDT 0.6B v3** in-process (ONNX Runtime), nessun server esterno
 - Distingue chi parla tra **Tu** (microfono) e **Altri** (sistema)
 - Note, riassunti e chat sulle trascrizioni con un **LLM locale** (llama.cpp)
-- **Modalità ridotta** a bordo schermo con tray icon nella menu bar e avvio automatico opzionale
+- Tray icon nella menu bar e avvio automatico opzionale in background
 
 ## Installazione
 
@@ -37,7 +37,6 @@ Al primo avvio concedi i permessi richiesti e scarica il modello STT da **Impost
 
 - **REC** avvia e ferma la registrazione di mic e sistema insieme
 - Dalla lista registrazioni apri il dettaglio e avvii la trascrizione, poi note, riassunti e chat
-- Il bottone dedicato attiva la modalità ridotta: la finestra diventa una linguetta sul bordo destro dello schermo, sempre accessibile
 
 ## Sviluppo
 

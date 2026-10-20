@@ -96,15 +96,9 @@
     @apply text-ink-primary;
   }
 
-  html:not(.compact-mode),
-  body:not(.compact-mode) {
+  html,
+  body {
     @apply bg-brand-dark;
-  }
-
-  html.compact-mode,
-  body.compact-mode,
-  body.compact-mode #app {
-    background-color: transparent;
   }
 
   html {
