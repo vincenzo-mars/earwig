@@ -11,6 +11,734 @@ Formato:
 **Prossimi passi:** ...
 ```
 
+## 2026-10-20 — Centratura orizzontale geometrica ed ottica dell'icona Play in Recorder
+
+**Obiettivo:** Correggere la centratura orizzontale dell'icona Play (filigrana a riposo) nel pulsante REC principale della schermata home (`Recorder.svelte`), eliminando l'offset in eccesso verso destra introdotto in precedenza e bilanciando perfettamente margini e peso visivo.
+
+**Fatto:**
+- **Analisi geometrica SVG Lucide:**
+  - Il path di `Play` in viewBox 24x24 si estende da `x=5.0` (base verticale) a `x=20.0` (vertice destro).
+  - La bounding box è centrata a `x=12.5` (+0.5 unità / +1.83px a destra rispetto al centro 12.0 dell'icona da 88px).
+  - L'applicazione precedente di `translate-x-0.5` (+2px) spingeva l'icona a un totale di +3.83px a destra, lasciando un margine sinistro di 40.3px e un margine destro di soli 32.7px (squilibrio visibile di ~8px).
+- **Recorder (`src/lib/Recorder.svelte`):**
+  - Rimosso `translate-x-0.5` e applicata la compensazione ottica calibrata `-translate-x-[1.5px]` (margine sinistro: 36.8px, margine destro: 36.2px, differenza < 0.6px).
+  - Rimossa la classe `tracking-[0.14em]` ereditata dal bottone che poteva introdurre distorsioni di spaziatura inline.
+- **Documentazione:**
+  - Aggiornati `docs/reference.md` e `DEVLOG.md`.
+
+## 2026-10-20 — Menu bar tray icon, gestione dinamica del Dock e avvio in background (Autostart)
+
+**Obiettivo:** Rendere Earwig un'utility di sistema sempre attiva nella barra dei menu (menu bar macOS in alto a destra), con apertura/chiusura della dashboard al click, rimozione dal Dock quando chiusa/minimizzata (modalità accessorio), e avvio automatico in background all'accensione del Mac configurabile sia da Onboarding che dalle Impostazioni.
+
+**Fatto:**
+- **Sistema Tray e Menu Bar (`src-tauri/src/lib.rs`):**
+  - Creata la `TrayIcon` di sistema con `TrayIconBuilder`, icona template monocromatica adattiva (`icon_as_template(true)`) e menu nativo contestuale (tasto destro: "Impostazioni..." ed "Esci da Earwig").
+  - Click sinistro sulla tray: toggle rapido tra visualizzazione e nascondimento della dashboard principale.
+- **Dock Dinamico macOS (`NSApplicationActivationPolicy` in `src-tauri/src/commands/window.rs`):**
+  - Implementata la funzione `set_dock_visible`: usa AppKit via `objc2` per commutare `NSApplicationActivationPolicy::Regular` (quando la dashboard è aperta, presente nel Dock e in Cmd+Tab) e `NSApplicationActivationPolicy::Accessory` (quando la dashboard è chiusa o minimizzata, rimossa dal Dock e da Cmd+Tab).
+  - Intercettazione della chiusura finestra (`CloseRequested`) e minimizzazione (`Focused(false)` con `is_minimized`): invece di uscire dall'app, la finestra si nasconde e passa in background nella menu bar.
+  - Gestito l'evento `RunEvent::Reopen` per ripristinare la finestra se cliccata dall'utente nel Finder/Spotlight mentre è in background.
+- **Avvio Automatico di Sistema (Autostart con `tauri-plugin-autostart`):**
+  - Integrato `tauri-plugin-autostart` con launcher nativo `MacosLauncher::LaunchAgent` (`~/Library/LaunchAgents/`) e flag `--background`.
+  - Configurate le capability di sicurezza in `src-tauri/capabilities/default.json` (`autostart:default`).
+  - Finestra configurata con `visible: false` in `tauri.conf.json`: su avvio normale viene mostrata istantaneamente da `.setup()`, mentre su avvio con `--background` resta silente in memoria.
+- **Frontend Svelte (`src/lib/`):**
+  - `Onboarding.svelte`: aggiunto toggle interattivo abilitato per default per consentire l'avvio con il Mac al termine della configurazione iniziale.
+  - `SettingsPanel.svelte`: aggiunta nuova sezione di vertice "Avvio di sistema" (icona `Power`) con switch reattivo sincronizzato con lo stato del LaunchAgent macOS.
+  - `App.svelte`: aggiunto listener per l'evento `open-settings` inviato dalla tray icon.
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md`, `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Icona fullscreen nuda e cliccabile nella linguetta compatta
+
+**Obiettivo:** Rimuovere il bordo e il background circolare (round button) dal pulsante per espandere/fullscreen nella modalità ridotta, lasciando solo l'icona nuda e cliccabile con transizione all'hover.
+
+**Fatto:**
+- **CompactStrip (`src/lib/CompactStrip.svelte`):**
+  - Rimosso l'utilizzo del componente `Button variant="icon"` per il pulsante `Maximize2`.
+  - Sostituito con un `<button>` nativo privo di bordo circolare, background e ombre: solo icona nuda centrata (`size-7`), con colore discreto `text-ink-faint`, hover reattivo a `text-ink-primary` e micro-feedback `scale-[0.92]`.
+  - Rimosso l'import non più utilizzato di `Button.svelte`.
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md`, `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Semplificazione a 2 stati per la linguetta: rimozione stato intermedio e icona play poco a destra
+
+**Obiettivo:** Rimuovere lo stato intermedio di prossimità non più utile, aumentare leggermente di qualche pixel la larghezza della linguetta iniziale a riposo e centrare l'icona Play poco verso destra.
+
+**Fatto:**
+- **CompactStrip (`src/lib/CompactStrip.svelte`):**
+  - **Rimozione stato intermedio (Proximity):** Eliminato lo step intermedio a 85px. La linguetta ora ha solo due stati chiari: a riposo (Idle) ed espansa (Hover).
+  - **Linguetta a riposo aumentata:** Portata da `w-[6px]` a `w-[12px]`, con dot discreto centrato verticalmente e bordo curvo morbido.
+  - **Icona Play centrata poco a destra:** Sostituito l'offset a sinistra con `translate-x-0.5` per una perfetta centratura ottica coerente con l'icona Play della schermata principale.
+  - Semplificata la gestione eventi: ascolto e transizione diretta tra `idle` ed `expanded`.
+- **Backend Rust (`src-tauri/src/commands/window.rs`):**
+  - Rimosso il loop in background su thread secondario che eseguiva polling continuo su `CGEventGetLocation` ogni 40ms.
+  - Eliminate le definizioni C/FFI CoreGraphics non più necessarie (`CGEventCreate`, `CGEventGetLocation`, `CFRelease`, `CGPoint`).
+  - Aggiornata la larghezza finestra per lo stato di riposo: `COMPACT_WIDTH_IDLE = 18.0`.
+  - La funzione `set_compact_hover` ora gestisce direttamente il passaggio tra `COMPACT_WIDTH_IDLE` (18px) ed `COMPACT_WIDTH_EXPANDED` (86px).
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md`, `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Ottimizzazione micro-spazi e rimozione timer nella barra ridotta
+
+**Obiettivo:** Perfezionare la linguetta ridotta a bordo schermo: ridurre lo stato idle a pochissimi pixel (`w-[6px]`), eliminare il timer in registrazione mantenendo solo il tasto circolare di stop, azzerare lo spazio tra REC e maximize, centrare otticamente l'icona play e avvicinare i 6 puntini al bordo dello schermo.
+
+**Fatto:**
+- **CompactStrip (`src/lib/CompactStrip.svelte`):**
+  - **Stato 1 (Idle):** Ridotto a sottilissima linguetta di pochissimi pixel (`w-[6px]`) con micro dot discreto (`size-1` a riposo, `size-1.5` durante la registrazione).
+  - **Stato 2 (Prossimità):** Ridotto a `w-[32px]` con miniatura circolare del bezel e dot rosso.
+  - **Stato 3 (Hover / Espanso):** Larghezza complessiva ridotta a soli `w-[82px]`:
+    - Margine sinistro compresso (`pl-1`).
+    - Eliminato completamente il timer in registrazione: sia REC sia STOP sono ora bottoni circolari identici `size-7`.
+    - Icona `Play` centrata otticamente leggermente verso sinistra (`-translate-x-0.5`).
+    - Spazio tra tasto REC/STOP e pulsante `Maximize2` azzerato (`gap-0`).
+    - Icona a 6 puntini di trascinamento verticale `GripVertical` posizionata a filo del bordo destro dello schermo (`pr-0.5`, `w-4`).
+- **Backend Rust (`src-tauri/src/commands/window.rs`):**
+  - Unificate le geometrie della finestra per gli stati di idle e registrazione (grazie alla rimozione del timer): `COMPACT_WIDTH_IDLE = 16.0`, `COMPACT_WIDTH_PEEK = 38.0`, `COMPACT_WIDTH_EXPANDED = 86.0`.
+  - Risolti i warning di variabili non usate nel loop di monitoraggio cursore.
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md`, `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Rimozione scritta REC nella linguetta: pulsante circolare pulito
+
+**Obiettivo:** Rimuovere completamente la dicitura testuale "REC" dalla linguetta in modalità ridotta, rendendo il mini pulsante una replica circolare e pura del bottone hero dell'app (solo cerchio rosso con watermark Play).
+
+**Fatto:**
+- **CompactStrip (`src/lib/CompactStrip.svelte`):**
+  - Rimossa la stringa "REC" sia dallo Stato 2 (prossimità) sia dallo Stato 3 (hover).
+  - Il pulsante REC a riposo è ora circolare (`size-7` con bezel concentrico esterno e watermark `Play`), perfettamente coordinato con il pulsante principale da 128px della home (anch'esso privo di testo).
+  - Ridotta la larghezza del cassetto espanso a riposo da 176px a 124px (`w-[124px]`), per una barra ultra-compatta e bilanciata contenente il cerchio REC, il pulsante `Maximize2` e la presa a 6 puntini `GripVertical`.
+- **Backend Rust (`src-tauri/src/commands/window.rs`):**
+  - Aggiornate le costanti di larghezza della finestra: `COMPACT_WIDTH_EXPANDED_IDLE = 128.0`, `COMPACT_WIDTH_PEEK_IDLE = 48.0`.
+- **Documentazione:**
+  - Aggiornati `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Refinements barra ridotta: 6 puntini a destra e mini pulsante REC coordinato
+
+**Obiettivo:** Posizionare l'icona di trascinamento a 6 puntini (`GripVertical`) all'estrema destra della barra espansa e coordinare lo stile grafico del pulsante REC/STOP piccolo con quello della hero nella schermata principale dell'app.
+
+**Fatto:**
+- **CompactStrip (`src/lib/CompactStrip.svelte`):**
+  - **Mini pulsante REC/STOP:**
+    - Ripreso il design concentrico a doppio anello dell'hero: bezel esterno `p-0.5 rounded-full border border-brand-cream/10 bg-brand-darker/60 shadow-raised`.
+    - Pulsante interno in `bg-rec` (con hover `bg-rec-strong`, feedback tattile `scale-[0.96]`) e icona `Play` watermark centrata a opacità 20% con testo "REC".
+    - Durante la registrazione: bezel `border-rec-strong/30 bg-rec-strong/10`, pulsante `bg-rec-strong`, icona `Square` di stop e cronometro `formatDuration` in font monospazio.
+    - Negli stati 1 (punta smussata) e 2 (prossimità), la punta mostra la miniatura coordinata del bezel e del dot rosso.
+  - **Disposizione controlli in hover (Stato 3):**
+    - A sinistra: il pulsante REC/STOP coordinato.
+    - Al centro/destra: pulsante icona `Maximize2` per espandere la finestra.
+    - All'estrema destra: l'icona a 6 puntini `GripVertical` per il trascinamento verticale della linguetta.
+- **Backend Rust (`src-tauri/src/commands/window.rs`):**
+  - Calibrate le larghezze della finestra espansa (`COMPACT_WIDTH_EXPANDED_IDLE = 180.0`, `COMPACT_WIDTH_EXPANDED_REC = 192.0`) per alloggiare con equilibrio il nuovo pulsante REC e la maniglia a 6 puntini a destra.
+- **Documentazione:**
+  - Aggiornati `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Linguetta modalità ridotta: 3 stati puliti, grafica macOS premium e prossimità a ~85px
+
+**Obiettivo:** Calibrare la distanza di prossimità da 200px a ~85px (con tolleranza verticale di 55px), per evitare attivazioni involontarie mentre si lavora su altre applicazioni e rendere l'interazione intenzionale e discreta.
+
+**Fatto:**
+- **Backend Rust (`src-tauri/src/commands/window.rs`):**
+  - Definite le costanti `PROXIMITY_RANGE_X = 85.0` e `PROXIMITY_RANGE_Y = 55.0`.
+  - La linguetta scivola verso sinistra (Stato 2 - Prossimità) solo quando il cursore entra intenzionalmente nell'area circostante la linguetta (entro 85px dal bordo destro e 55px dal centro verticale della linguetta).
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md`, `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Linguetta modalità ridotta: 3 stati puliti, grafica macOS premium e prossimità a 200px
+
+**Obiettivo:** Rimuovere qualsiasi animazione appariscente (ping, gradienti neon, glow) e implementare i 3 stati puliti richiesti per la linguetta a bordo schermo:
+1. Non vicino (> 200px): si vede solo la punta sinistra smussata della linguetta con sobrio dot rosso fermo, grafica Mac premium coerente con l'app.
+2. Prossimità (range entro 200px): la linguetta scivola verso sinistra con interpolazione fluida macOS per farsi prendere facilmente.
+3. Hover: la linguetta si allarga a piena dimensione mostrando i controlli completi.
+
+**Fatto:**
+- **Backend Rust (`src-tauri/src/commands/window.rs`):**
+  - Implementato il monitoraggio della posizione globale del cursore del mouse tramite le API CoreGraphics macOS (`CGEventGetLocation`), a impatto zero su CPU (loop leggero a 40ms quando la finestra è in modalità compatta).
+  - Quando il cursore entra nel range di 200px orizzontali e 80px verticali rispetto alla linguetta, il backend allarga la finestra a 68px (`COMPACT_WIDTH_PEEK`) ed emette l'evento `compact-stage: proximity`.
+  - Quando il mouse si allontana oltre 200px, la finestra torna all'ingombro minimo di 28px (`COMPACT_WIDTH_IDLE`) ed emette `compact-stage: idle`.
+- **Frontend Svelte (`src/lib/CompactStrip.svelte`):**
+  - Rimossa ogni animazione "fancy" (niente ping, pulsazioni o gradienti colorati).
+  - Progettata una linguetta singola, smussata a sinistra (`rounded-l-2xl`), integrata nei colori scuri e caldi dell'app (`bg-brand-darker/95`, `border-brand-cream/15`).
+  - Stato 1 (Idle): sporge solo la punta sinistra (`w-[14px]`) con dot rosso fisso.
+  - Stato 2 (Proximity): scivola fluidamente verso sinistra a `w-[48px]` (`w-[62px]` se in REC con timer) con curva macOS `ease-[cubic-bezier(0.16,1,0.3,1)]`.
+  - Stato 3 (Hover): si allarga a `w-[168px]` (`w-[176px]` se in REC) svelando i controlli (grip, REC/STOP, maximize).
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md`, `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Icona a 3 puntini verticali a destra per lo spostamento della barra ridotta
+
+**Obiettivo:** Riposizionare l'area di presa e trascinamento verticale della barra compatta sull'icona con 3 puntini verticali (`MoreVertical`) collocata all'estrema destra della barra una volta aperta.
+
+**Fatto:**
+- **CompactStrip (`src/lib/CompactStrip.svelte`):**
+  - Sostituita l'icona precedente con l'icona a 3 puntini verticali `MoreVertical` (`size={16}`).
+  - Posizionata la nuova icona a tutta destra all'interno della barra estesa (affiancata al pulsante `Maximize2`), lasciando i comandi primari (REC / STOP con timer) sulla sinistra.
+  - Agganciati gli eventi pointer (`onpointerdown={handleGripPointerDown}`) e i cursori dedicati (`cursor-grab` e `cursor-grabbing` durante il drag) all'icona a 3 puntini.
+- **Documentazione:**
+  - Aggiornato `docs/reference.md`.
+
+## 2026-10-20 — Transizione animata fluida da hover a non-hover nella modalità ridotta
+
+**Obiettivo:** Eliminare lo scatto istantaneo al disimpegno del mouse dalla modalità compatta, implementando una transizione bidirezionale elastica e fluida sia in entrata che in uscita.
+
+**Fatto:**
+- **CompactStrip (`src/lib/CompactStrip.svelte`):**
+  - Sostituito il toggle condizionale `{#if !isHovered}` con elementi persistenti nel DOM coordinati via stato reattivo `isExpanded`.
+  - Applicata curva di decelerazione elastica `cubic-bezier(0.16, 1, 0.3, 1)` a 280ms su scala, traslazione orizzontale e opacità con micro-blur.
+  - Al `mouseleave`, la card estesa scivola verso l'esterno verso destra mentre l'indicatore compatto (5px a riposo o 92px in REC) scivola in posizione.
+  - Introdotto un timer di collasso (280ms) per sincronizzare il ridimensionamento della finestra OS Tauri (`set_compact_hover` con `hovered: false`) esattamente al completamento della transizione CSS, evitando tagli visivi o scatti anticipati.
+  - Gestita l'interruzione continua: un rientro del mouse durante la fase di chiusura cancella il timer e inverte la transizione senza salti.
+- **Documentazione:**
+  - Aggiornato `docs/reference.md`.
+
+## 2026-10-20 — Modalità ridotta a bordo schermo: prossimità ~50px, 5px a riposo, draggable e animazioni ricche
+
+**Obiettivo:** Perfezionare la modalità ridotta a bordo schermo rendendola quasi impercettibile a riposo (5px sul bordo estremo dello schermo), reattiva alla prossimità del mouse (~50px), completamente spostabile in verticale (draggable) con clamping anti-collisione macOS (menu bar e Dock) e arricchita con animazioni elastiche, bagliori, micro-interazioni e glassmorphism.
+
+**Fatto:**
+- **Finestra trasparente nativa:**
+  - Abilitato `transparent: true` nella configurazione Tauri (`tauri.conf.json`).
+  - Gestita trasparenza tramite classe `.compact-mode` su `html` e `body` in `App.svelte` e `App.css`, consentendo al webview di essere trasparente nella zona di prossimità.
+- **Rilevamento prossimità (50px) e animazioni:**
+  - A riposo la finestra misura 52px con soli 5px visibili come indicatore luminoso con gradiente e glow ambrato/rosso (`animate-pulse`).
+  - Appena il cursore entra nella zona di 50px dal bordo dello schermo (`onmouseenter`), la barra scivola fuori espandendosi a 168px con animazioni slide/fade, riverbero luminoso e pulsante REC animato con onde ping.
+- **Spostamento verticale (Draggable lungo il bordo):**
+  - Implementati comandi Tauri `set_compact_y` e `get_compact_position` in `src-tauri/src/commands/window.rs`.
+  - Aggiunto grip handle `GripVertical` sia nello stato a riposo esteso sia in registrazione: trascinando il mouse, la finestra segue in tempo reale la coordinata Y, con clamping automatico che impedisce sovrapposizioni con la barra dei menu macOS in alto o con il Dock in basso.
+  - La posizione verticale scelta viene memorizzata in `SavedWindowState` e preservata attraverso tutti i cambi di stato (collassato/espanso/registrazione).
+- **Stato registrazione:**
+  - A riposo: pillola compatta con bagliore rosso, dot pulsante `animate-ping` e timer.
+  - Al passaggio del mouse: espansione fluida a 176px con pulsante STOP con timer, grip di spostamento e pulsante di espansione `Maximize2`.
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md` e `docs/reference.md`.
+
+## 2026-10-20 — Tipografia titoli accordion impostazioni più grande
+
+**Obiettivo:** Rendere più grandi e leggibili i titoli delle sezioni accordion nel pannello impostazioni (`SettingsPanel`), migliorando la gerarchia visiva rispetto alle voci interne delle card.
+
+**Fatto:**
+- **AccordionSection (`src/lib/AccordionSection.svelte`):**
+  - Incrementata la dimensione del font del titolo da `text-xs` (12px) a `text-sm` (14px, `font-semibold tracking-wide`), distinguendo chiaramente i titoli di sezione dal testo dei contenuti interni.
+  - Adeguata otticamente la dimensione dell'icona a sinistra da 16px a 17px e dell'icona chevron da 14px a 15px.
+- **Documentazione:**
+  - Aggiornato `docs/reference.md`.
+
+## 2026-10-20 — Fix sfondo bianco in modalità ridotta (WebKit window transparency su macOS)
+
+**Obiettivo:** Risolvere il problema visivo per cui la modalità ridotta (edge drawer / mini bar a bordo schermo) mostrava un riquadro rettangolare bianco opaco attorno alla barra o all'indicatore invece di fondersi in modo trasparente con il desktop di macOS.
+
+**Causa tecnica:**
+- Su macOS, `WKWebView` possiede di default uno strato di rendering opaco bianco (`#FFFFFF`).
+- Anche se il CSS imposta `background-color: transparent`, WebKit dipinge comunque il suo canvas bianco a meno che non venga invocata l'API privata `[WKWebView _setDrawsBackground:NO]`.
+- In Tauri v2, questa chiamata è condizionata a due prerequisiti:
+  1. Il feature flag `macos-private-api` sul crate `tauri` in `Cargo.toml`.
+  2. La configurazione `"macOSPrivateApi": true` in `tauri.conf.json` sotto `"app"`.
+- Inoltre, in `src/App.css` solo `body.compact-mode` azzerava lo sfondo, mentre l'elemento root `html` non aveva regole per `compact-mode`, permettendo al browser di ricorrere allo sfondo bianco predefinito.
+
+**Fatto:**
+- **Configurazione Tauri (`src-tauri/tauri.conf.json`):**
+  - Aggiunto `"macOSPrivateApi": true` nella sezione `"app"` (affiancato a `"transparent": true` sulla finestra principale).
+- **Stili CSS (`src/App.css`):**
+  - Estesa la trasparenza in `compact-mode` su `html`, `body` e `#app` con `background: transparent !important`.
+  - Impostato `bg-brand-dark` esplicitamente solo quando `not(.compact-mode)`.
+  - Assicurato `height: 100%` anche sul contenitore `#app`.
+- **Documentazione:**
+  - Aggiornati `docs/architecture.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Palette colore: accordatura a un rosso caldo (ember/ambra scura) più scuro e profondo
+
+**Obiettivo:** Abbassare la luminanza complessiva della palette mantenendo l'accordo caldo a base di rosso/ambra scura (`Hue ~12-14°`, `R > G > B`), per un look più profondo e scuro stile ossidiana.
+
+**Fatto:**
+- **Palette Tailwind (`src/App.css`):**
+  - `--color-brand-dark`: `#211512` (sfondo app, luminanza ~10%).
+  - `--color-brand-darker`: `#170f0c` (superfici e card).
+  - `--color-brand-lighter`: `#3f2923`.
+  - `--color-brand-lightest`: `#52362f`.
+  - `--color-brand-light`: `#947a72`.
+  - `--color-brand-cream`: `#f9f5f3`.
+  - `--color-brand-cream-dim`: `#ebe3df`.
+  - `--color-brand-ink`: `#0c0605`.
+- **Documentazione:**
+  - Aggiornati `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Header actions in RecordingDetail: pulsante copia nell'header e durata senza badge
+
+**Obiettivo:** Spostare l'azione "Copia tutto" dal corpo della trascrizione all'header del dettaglio registrazione, e rimuovere lo stile badge (bordo, sfondo e padding da pillola) attorno al tempo di durata nell'header lasciando solo icona e testo.
+
+**Fatto:**
+- **RecordingDetail (`src/lib/RecordingDetail.svelte`):**
+  - Rimossa la visualizzazione a badge attorno alla durata della registrazione nell'header: ora è un elemento pulito e discreto con sola icona `Clock` e testo numerico tabular monospace (`text-ink-secondary`).
+  - Spostato il pulsante "Copia tutta la conversazione" (`Button variant="icon"` con icone `Copy` / `Check`) direttamente nelle `headerActions` della modale, sempre visibile e allineato alle altre azioni (`Folder`, `RotateCcw`).
+  - Rimosso il container sticky galleggiante del pulsante di copia dall'area di lettura della trascrizione, pulendo il layout del corpo del testo.
+- **Documentazione:**
+  - Aggiornato `docs/reference.md`.
+
+## 2026-10-20 — Note Markdown agnostiche nelle impostazioni
+
+**Obiettivo:** Rendere la sezione dedicata all'esportazione delle note Markdown nelle impostazioni (`SettingsPanel`) e nell'onboarding (`Onboarding`) completamente agnostica rispetto ad applicazioni di terze parti, rimuovendo ogni menzione esplicita a Obsidian.
+
+**Fatto:**
+- **SettingsPanel (`src/lib/SettingsPanel.svelte`):**
+  - Rinomata la sezione da `"Note Markdown & Obsidian"` a `"Note Markdown"`.
+  - Aggiornata la descrizione: le note vengono esportate come file `.md` con frontmatter YAML e testo dei turni di dialogo, salvabili nella cartella predefinita o in una cartella a piacere.
+  - Aggiornato il pulsante di selezione da `"Collega Vault Obsidian"` a `"Scegli cartella"`.
+  - Rimossa la menzione di Obsidian dal titolo del file picker nativo macOS.
+- **Onboarding (`src/lib/Onboarding.svelte`):**
+  - Titolo e testi uniformati al linguaggio agnostico ("Note Markdown", "Scegli cartella per le note Markdown").
+- **Documentazione:**
+  - Aggiornato `docs/reference.md` per riflettere la titolazione agnostica.
+
+## 2026-10-20 — Palette colore: grigi scuri con nota di rosso caldo
+
+**Obiettivo:** Rimodulare la palette dei grigi scuri dell'app (`brand-dark`, `brand-darker`, `brand-lighter`, `brand-lightest`, `brand-cream`) per mantenere la stessa profondità e luminanza dei grigi attuali, infondendo al contempo una nota elegante e sottile di rosso/bordeaux coerente con l'accento REC.
+
+**Fatto:**
+- **Palette Tailwind (`src/App.css`):**
+  - Spostata la tinta dei token `brand-*` da un sottotono oliva/giallastro a un sottotono rosso caldo (R > G/B di 6-12 punti):
+    - `--color-brand-dark`: da `#1e1c19` a `#241a1c` (sfondo app).
+    - `--color-brand-darker`: da `#141311` a `#191214` (card, modali, pannelli).
+    - `--color-brand-lighter`: da `#3e3b37` a `#483538`.
+    - `--color-brand-lightest`: da `#4e4a45` a `#5a4447`.
+    - `--color-brand-light`: da `#94908a` a `#9e8a8d`.
+    - `--color-brand-cream`: da `#f7f5f1` a `#f8f4f4` (bianco/crema pulito privo di dominanti gialle).
+    - `--color-brand-cream-dim`: da `#e8e4de` a `#e8e1e2`.
+    - `--color-brand-ink`: da `#0b0a08` a `#0f090a`.
+- **Documentazione:**
+  - Aggiornati `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Refactoring layout dettaglio registrazione: chat a tutta altezza e header actions
+
+**Obiettivo:** Rimuovere la barra inferiore (bottom stripe bar) e la sidebar destra dal dettaglio della registrazione per offrire una visualizzazione a tutta larghezza e tutta altezza in stile conversazione GPT. Trasferire la durata con icona orologio (`Clock`) e il percorso cartella Finder con icona cartella (`Folder`) direttamente nell'header in alto a destra, affiancati dal pulsante di rilancio trascrizione (`RotateCcw`).
+
+**Fatto:**
+- **RecordingDetail (`src/lib/RecordingDetail.svelte`):**
+  - Eliminata la barra inferiore (`<footer>` bottom nav): il corpo della modale è interamente dedicato alla lettura della conversazione.
+  - Nell'header (`headerActions` di `Modal.svelte`):
+    - Aggiunta la pillola della durata con icona tempo `Clock` e durata audio in font monospazio tabular.
+    - Aggiunto il pulsante `Folder` (`Button variant="icon"`) per rivelare istantaneamente la cartella nel Finder (`revealItemInDir`).
+    - Mantenuto il pulsante `RotateCcw` per rilanciare la trascrizione.
+  - Nell'area di conversazione: mantenuto il pulsante sticky CTA "Copia tutto" a sola icona in alto a destra.
+- **Documentazione:**
+  - Aggiornato `docs/reference.md`.
+
+---
+
+## 2026-10-20 — Refinement RecordingsList: rimozione icona ripetuta a sinistra e fix click affidabile
+
+**Obiettivo:** Rimuovere l'icona semantica ripetuta a sinistra su ogni record della lista registrazioni e rendere il click sulle righe fluido, immediato e privo di zone morte.
+
+**Fatto:**
+- **RecordingsList (`src/lib/RecordingsList.svelte`):**
+  - Rimossa l'icona ripetuta a sinistra (`AudioWaveform` / `AlertCircle` nel box con bordo) per ogni record: il lato sinistro presenta direttamente il titolo formattato con la data naturale (`formatRecordingDate`) e la durata audio in font mono.
+  - Per le registrazioni già trascritte (`status === "transcribed"`), l'intera riga è trasformata in un `<button type="button">` nativo a tutta larghezza (`w-full`): l'intera superficie della card (compresi padding ed aree tra testo e badge) è ora cliccabile con `cursor-pointer`, azzerando i punti morti che impedivano l'apertura al click sui bordi o padding del contenitore.
+  - Stati `hover`, `active` e navigazione (`push("/detail/<name>")`) spostati sul `<button>` principale, preservando accessibilità e feedback tattile.
+  - Per le registrazioni non trascritte o in errore, la riga rimane un `<div>` informativo con pulsante retry dedicato, prevenendo annidamenti non validi di tag button.
+- **RecordingDetail (`src/lib/RecordingDetail.svelte`):**
+  - Corretta la derivazione di `id`: evita `decodeURIComponent` ridondante quando `propId` è già decodificato da `App.svelte`, scongiurando errori a runtime `URIError` su nomi con caratteri speciali.
+- **Documentazione:**
+  - Aggiornato `docs/reference.md` per descrivere la nuova struttura della card e la rimozione dell'icona a sinistra.
+
+## 2026-10-20 — Esportazione Markdown strutturata per Obsidian e configurazione Vault
+
+**Obiettivo:** Generare per ogni trascrizione un file `.md` strutturato e ottimizzato per Obsidian (frontmatter YAML con metadati, link all'audio WAV e dialogo formattato con `**Tu:**` e `**Altri:**`), rendendo configurabile il percorso di destinazione (Vault Obsidian o cartella personalizzata) sia durante l'onboarding iniziale sia nelle impostazioni, mantenendo al tempo stesso il salvataggio predefinito nella cartella della registrazione (`transcript.md`).
+
+**Fatto:**
+- **Struttura Markdown (`src-tauri/src/commands/stt.rs`):**
+  - Implementata la funzione `build_transcript_markdown`:
+    - **Frontmatter YAML**: `title`, `duration` formattata (`mm:ss`), `tags: [trascrizione, earwig]`, `source: "audio.wav"`.
+    - **Link audio**: `[Ascolta registrazione audio](file://...)` che punta al file WAV locale.
+    - **Dialogo sequenziale**: accorpamento dei turni consecutivi con speaker in grassetto (`**Tu:**` e `**Altri:**`).
+  - Al termine di `run_transcription`, il file viene scritto sempre come `transcript.md` nella cartella della registrazione, e se è configurata una `transcripts_dir` esterna (es. Vault Obsidian), viene duplicato lì come `<timestamp>.md` (`{entry_name}.md`).
+  - In `list_recordings` (`recording.rs`), aggiunta la generazione retroattiva automatica di `transcript.md` per le registrazioni storiche che non ne dispongono ancora.
+- **Configurazione e comandi backend (`src-tauri/src/commands/mod.rs` e `lib.rs`):**
+  - Aggiunto `transcripts_dir: Option<String>` in `SttSettings` con `#[serde(default)]`.
+  - Introdotti i comandi Tauri `get_transcripts_dir` e `set_transcripts_dir`.
+- **Interfaccia Onboarding (`src/lib/Onboarding.svelte`):**
+  - Una volta completato il download del modello vocale, l'onboarding presenta un passaggio dedicato per scegliere la destinazione delle note Markdown: consente di selezionare subito il Vault Obsidian tramite native file picker dialog (`@tauri-apps/plugin-dialog`) o proseguire con la cartella predefinita.
+- **Pannello Impostazioni (`src/lib/SettingsPanel.svelte`):**
+  - Aggiunta la sezione collassabile `AccordionSection` per "Note Markdown & Obsidian": visualizzazione del percorso con pillola cliccabile per aprire nel Finder (`revealItemInDir`), pulsante "Collega Vault Obsidian" / "Cambia cartella" e opzione per ripristinare la cartella predefinita.
+- **Tipi e helper (`src/lib/types.ts`):**
+  - Estesa `SttSettings` con `transcriptsDir: string | null`.
+- **Verifiche & Documentazione:**
+  - `npm run typecheck`: 0 errori e 0 warning.
+  - `npm run lint:fix`: formattazione validata con Biome.
+  - `cargo check`: superato senza warning.
+  - Aggiornati `docs/architecture.md`, `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+**Obiettivo:** Trasformare sia il dettaglio della registrazione (`RecordingDetail`) sia il pannello impostazioni (`SettingsPanel`) in finestre modali sovrapposte alla schermata principale (`Recorder`), evitando lo smontaggio della schermata home e garantendo continuità allo stato della sessione (REC, elaborazione audio, timer e scroll della lista registrazioni).
+
+**Fatto:**
+- **Componente modale condiviso (`src/lib/Modal.svelte`):**
+  - Finestra di dialogo accessibile con `role="dialog"`, `aria-modal="true"` e stopPropagation sui click interni.
+  - Comportamento responsive a **tutta finestra**: quando la finestra è troppo piccola (`innerWidth < 640` o `innerHeight < 600`), la modale occupa il 100% dell'area utile della finestra (`h-full w-full rounded-none border-0 shadow-none p-0`), azzerando i margini per massimizzare lo spazio su schermi compatti o dimensioni default dell'app (400x500). Quando la finestra è sufficientemente capiente, si trasforma automaticamente in modale flottante centrata con angoli arrotondati e ombra.
+  - Backdrop scuro e sfocato (`bg-black/60 backdrop-blur-sm`) con transizione fluida `fade` (150ms).
+  - Finestra centrata con bordo `border-brand-cream/10`, sfondo `bg-brand-dark`, ombra elevata `shadow-2xl` e transizione `scale` (start 0.96, 150ms) per l'effetto pop-in tipico delle finestre di dialogo native desktop macOS.
+  - Header integrato con titolo uppercase, azioni opzionali e pulsante di chiusura circolare `Button variant="icon"` con icona `X`.
+  - Gestione chiusura multipla: tasto `Escape` su window, click sul backdrop esterno (con controllo su `mousedown` per evitare chiusure accidentali durante selezioni testo all'interno), tasto `X` e pulsanti interni.
+- **Dettaglio Registrazione (`src/lib/RecordingDetail.svelte`):**
+  - Rimosso `PageHeader` a tutta pagina; il componente ora incapsula `Modal` (`maxWidth="max-w-5xl"`, altezza bloccata `h-[85vh]`).
+  - Titolo dinamico formattato con la data naturale (`formatRecordingDate(entry.name)`).
+  - Layout responsive dinamico: a due colonne su finestre ampie (`md:flex-row`), e a scorrimento verticale su finestre compatte (`flex-col`) con trascrizione sopra e dock metadati/azioni in basso.
+  - Supporta le prop `id` e `onclose`.
+- **Impostazioni (`src/lib/SettingsPanel.svelte`):**
+  - Rimosso `PageHeader` a tutta pagina; il componente ora incapsula `Modal` (`maxWidth="max-w-xl"`).
+  - Titolo fisso "Impostazioni" e scroll verticale interno per le sezioni collassabili.
+  - Supporta la prop `onclose` e mantiene il deep-linking automatico a sezioni specifiche tramite querystring (`#stt-server`).
+- **Guscio applicazione (`src/App.svelte` e `src/lib/routes.ts`):**
+  - `Recorder` diventa la schermata base permanente sempre montata, evitando layout shift o interruzioni di stato audio/timer.
+  - `App.svelte` ascolta reattivamente `router.location` per montare come overlay la modale impostazioni (quando `router.location === "/settings"`) o la modale dettaglio (quando `router.location.startsWith("/detail/")`).
+  - La funzione `closeModal()` invoca `replace("/")` per chiudere le modali e riallineare l'hash URL.
+- **Documentazione & Verifiche:**
+  - Aggiornati `AGENTS.md` e `docs/reference.md`.
+  - `npm run typecheck`: 0 errori e 0 warning.
+  - `npm run lint:fix`: 0 errori Biome.
+  - `npm run build`: build Vite completata con successo.
+  - `cargo check`: check completato con successo.
+
+---
+
+## 2026-10-20 — Refactoring pagina dettaglio: conversazione fluida stile GPT e sidebar metadati essenziale
+
+**Obiettivo:** Snellire radicalmente la vista di dettaglio della registrazione: rimuovere i box superiori, i bordi e i badge degli interventi; formattare la trascrizione a sinistra come una conversazione fluida stile ChatGPT con solo "Tu:" e "Altri:"; inserire una sidebar a destra con sole scritte per "Stato", "Durata" e "Posizione file".
+
+**Fatto:**
+- **PageHeader (`src/lib/PageHeader.svelte`):**
+  - Reso il titolo puramente condizionale (`{#if title}`): non viene mostrato alcun titolo di fianco al pulsante Indietro quando omesso o vuoto.
+- **Accesso vincolato allo stato trascritto (`src/lib/RecordingsList.svelte` e `RecordingDetail.svelte`):**
+  - In `RecordingsList`, solo le registrazioni con trascrizione completata (`status === "transcribed"`) sono cliccabili ed evidenziate da `ChevronRight`.
+  - In `RecordingDetail`, redirect automatico alla home (`replace("/")`) per id senza trascrizione disponibile.
+  - Rimossa la voce "Stato" dalla sidebar: chi naviga nel dettaglio è per definizione su una registrazione già trascritta con successo.
+- **Colori Speaker (`src/lib/TranscriptView.svelte` e `src/lib/types.ts`):**
+  - `"Tu:"`: colore Rosso (`text-red-400`, allineato a destra).
+  - `"Altri:"`: colore Viola (`text-purple-400`, allineato a sinistra).
+- **Vista Dettaglio & Sidebar essenziale (`src/lib/RecordingDetail.svelte`):**
+  - Eliminato il box superiore e la griglia di metriche.
+  - Rimosso il tempo "Parakeet:" sotto la durata (resta solo la durata audio).
+  - Allargata la sidebar a destra di 150px (`w-80`, 320px).
+  - Allineata la riga "Percorso:" all'identico layout e pillola interattiva con micro-hover delle Impostazioni (`border-brand-cream/8 bg-brand-cream/[0.03]`).
+  - Spostate le azioni "Copia tutto" e "Rilancia" dal PageHeader direttamente all'interno della sidebar a destra.
+  - PageHeader pulito senza titolo né azioni laterali.
+- **Documentazione & Verifiche:**
+  - Aggiornati `docs/reference.md` e `DEVLOG.md`.
+  - `npm run typecheck`: 0 errori e 0 warning.
+  - `npm run lint:fix`: 0 errori Biome.
+  - `cargo check`: completato con successo.
+
+---
+
+## 2026-10-20 — Refactoring UI: accordion unificato Server STT, disattivazione LLM e redesign elenco registrazioni lineare
+
+**Obiettivo:** Snellire e pulire l'interfaccia utente: disattivare la chat/riassunto LLM in attesa del modello locale futuro, unificare la configurazione del motore STT in un unico accordion coerente ("Server STT"), rendere i percorsi cartella interattivi senza icone rindondanti, e ridisegnare l'elenco delle registrazioni secondo uno stile lineare e minimalista (ispirato a Things 3 / Linear / Raycast).
+
+**Fatto:**
+- **Disattivazione LLM:**
+  - Rimosso `TranscriptNotes` e i controlli LLM da `RecordingDetail.svelte`, lasciando la vista focalizzata sulla trascrizione per speaker e timestamp.
+  - Rimossa la colonna/sezione LLM da `SettingsPanel.svelte`.
+  - Disattivato il check automatico `servers.refreshLlm()` al boot in `App.svelte`.
+- **Armonizzazione colori e superfici tra Settings ed Elenco Registrazioni:**
+  - Aggiornato `AccordionSection.svelte` per adottare lo stesso identico contenitore `bg-brand-dark/40`, bordo `border-brand-cream/8` e raggio `rounded-lg` della lista registrazioni, eliminando lo stacco con il fondo scuro `bg-brand-darker`.
+  - Rimossa la nidificazione superflua di box dentro box in `SettingsPanel`: i permessi e le righe del server STT sono ora organizzati direttamente come liste divise da `divide-brand-cream/6`, con padding `px-3.5 py-2.5` e hover uniforme `hover:bg-brand-cream/[0.04]`.
+  - Rimosso il doppio spinner in elaborazione nell'icona sinistra della lista, mantenendo solo il loader sul badge di stato a destra.
+- **Redesign Elenco Registrazioni (Opzione 2: Lineare & Minimalista):**
+  - In `src/lib/types.ts`: introdotto `formatRecordingDate(name)` che converte i timestamp grezzi `YYYY-MM-DD HH.mm.ss` in date umane relative ("Oggi, 14:23", "Ieri, 09:12", "18 Ott, 16:45").
+  - In `src/lib/RecordingsList.svelte`: sostituite le card singole con un elenco compatto `divide-y divide-brand-cream/6` all'interno di un unico guscio scuro (`bg-brand-darker` con bordo fine).
+  - A sinistra: icona circolare `FileAudio` con colore semantico in base allo stato di trascrizione (verde per trascritta, arancione pulsante durante il salvataggio/trascrizione, rosso per fallita).
+  - Al centro: data naturale leggibile affiancata dalla durata audio in font monospazio (`tabular-nums`).
+  - A destra: badge di stato discreto con dot colorato, cronometro elapsed/tempo impiegato, bottone a icona `RotateCcw` per riprovare se fallita o pending, e `ChevronRight` con micro-transizione orizzontale al passaggio del mouse.
+- **Verifiche:**
+  - `npm run typecheck`: 0 errori e 0 warning.
+  - `npm run lint:fix`: formattazione pulita e verificata con Biome.
+  - `cargo check`: superato senza warning.
+- Aggiornati `docs/reference.md` e `DEVLOG.md`.
+
+---
+
+## 2026-10-20 — Migrazione motore STT a NVIDIA Parakeet TDT 0.6B v3 in-process (ONNX)
+
+**Obiettivo:** Sostituire whisper-server (Whisper Large-v3-Turbo su porta 8080) con NVIDIA Parakeet TDT 0.6B v3 in-process tramite `parakeet-rs` e ONNX Runtime, per migliorare radicalmente l'accuratezza della trascrizione in italiano, la punteggiatura e l'affidabilità della diarizzazione, eliminando al tempo stesso processi esterni, porte di rete (8080), lockfile e gestione di processi orfani.
+
+**Fatto:**
+- Integrato `parakeet-rs = "0.4.1"` in `src-tauri/Cargo.toml` con backend ONNX Runtime (`ort`).
+- In `src-tauri/src/commands/stt.rs`:
+  - Riscritto completamente il modulo: rimosso l'avvio del processo esterno `whisper-server`, le chiamate multipart HTTP e i lockfile su porta 8080.
+  - Implementato `SttEngineState` (gestito come state in Tauri `lib.rs`) con caching in-process `Option<Arc<ParakeetTDT>>`.
+  - Implementato il download sequenziale multi-file dei componenti del modello (`vocab.txt`, `decoder_joint-model.int8.onnx`, `encoder-model.int8.onnx` da Hugging Face `istupakov/parakeet-tdt-0.6b-v3-onnx`, ~670 MB totali) con file temporanei `.part`, rename atomico e notifica unificata su `download-progress`.
+  - Implementata la trascrizione a chunk di 120 secondi (1.920.000 campioni a 16 kHz) con `TimestampMode::Sentences`, garantendo segmenti naturali e punteggiatura nativa senza picchi di memoria su audio lunghi.
+  - Implementata la diarizzazione fisica deterministica: per registrazioni stereo, i canali L (mic/YOU) e R (sys/THEM) vengono de-interlacciati e trascritti separatamente, assegnando rigorosamente `speaker: "0"` per il microfono e `speaker: "1"` per il sistema, unendo e ordinando i segmenti cronologicamente.
+  - Per registrazioni mono (es. audio importati), trascrizione del singolo canale con `speaker: None`.
+- In `src-tauri/src/commands/mod.rs`:
+  - Aggiunte le funzioni `local_parakeet_dir` e `is_stt_model_ready`.
+  - Aggiornato `get_stt_settings` per verificare la presenza di tutti e tre i file ONNX/vocab sul disco.
+  - Rimosso `STT_PORT` non più utilizzato.
+- In `src-tauri/src/commands/recording.rs`:
+  - Aggiornato `ensure_stt_ready` per basarsi sulla presenza del modello con `is_stt_model_ready`.
+- In `src-tauri/src/lib.rs`:
+  - Sostituito `WhisperServerState` con `SttEngineState`.
+  - Rimosso il codice di terminazione di `whisper-server` all'uscita dell'app (`ExitRequested`), mantenendo solo quello per `llama-server`.
+- In `src/lib/SettingsPanel.svelte` e `src/lib/SttIndicator.svelte`:
+  - Aggiornati testi e label: "Modello vocale (STT)", "Parakeet TDT 0.6B v3 (~670 MB)", "Motore STT (In-process)", "STT pronto", "STT non scaricato".
+- Benchmark prestazionale:
+  - 124.35 secondi di audio in italiano trascritti in 4.54 secondi (~27.4x real-time) su Apple Silicon con segmentazione fluida in frasi e punteggiatura naturale.
+- Aggiornati `docs/architecture.md` e `docs/reference.md`.
+
+**Decisioni:**
+- **In-process via `parakeet-rs` invece di un server HTTP:** elimina la necessità di compilare o gestire `whisper-server`, azzera overhead di rete e serialization multipart, e garantisce che l'inferenza condivida il ciclo di vita dell'app Tauri senza processi zombie.
+- **Chunking a 120s:** evita overhead eccessivi di memoria nell'encoder FastConformer per file molto lunghi, mantenendo al contempo un contesto sufficientemente ampio per la decodifica del linguaggio e della punteggiatura.
+- **Diarizzazione per canale hardware:** grazie all'AEC3 e al bilanciamento RMS implementati in precedenza, i due canali stereo contengono voci pulite e separate. Trascrivere i canali indipendentemente garantisce speaker attribution al 100% deterministica, senza errori di clustering statistico.
+
+**Prossimi passi:**
+- Test end-to-end e verifica con registrazione dal vivo.
+
+---
+
+## 2026-10-19 — Stato di caricamento inline nella lista registrazioni e rimozione doppio loader
+
+**Obiettivo:** Rimuovere il doppio loader (spinner nel bottone REC e pillola nel dock) durante il processing dell'audio. Mostrare la fase di cancellazione rumore e quella di trascrizione direttamente nella riga della registrazione nell'elenco, con badge dedicati e card non cliccabile durante il caricamento, eliminando la dicitura separata "trascrizione in corso" dal dock.
+
+**Fatto:**
+- In `src-tauri/src/commands/recording.rs`:
+  - `stop_recording` accetta il parametro opzionale `timestamp: Option<String>` e lo passa a `new_recording_path`: questo garantisce che il nome della cartella generato dal frontend all'istante di STOP coincida esattamente con il filesystem, senza discrepanze temporali.
+- In `src/lib/types.ts`:
+  - Aggiunta funzione `formatTimestamp` (formato `%Y-%m-%d %H.%M.%S`).
+  - Definiti i tipi `ProcessingPhase` (`"noise_cancellation" | "transcribing"`) e `ProcessingItem`.
+- In `src/lib/stores/session.svelte.ts`:
+  - Aggiunto lo stato `processingItem` che traccia l'elemento in corso (`name`, `folderPath`, `phase`).
+  - In `stopRecording`: calcolato il timestamp, impostato `processingItem` su `phase: "noise_cancellation"`, invocato `stop_recording`, poi passato a `phase: "transcribing"` prima di avviare `runTranscription`.
+  - In `importFile`: impostato `processingItem` su `phase: "transcribing"` durante la trascrizione del file importato.
+- In `src/lib/stores/recordings.svelte.ts`:
+  - `recordings.all` deriva la lista includendo in testa l'eventuale `session.processingItem` prima ancora che esista su disco: la card compare istantaneamente al click di STOP.
+  - In `retryTranscription`: impostato `processingItem` inline per mostrare lo stato di caricamento direttamente sulla riga selezionata.
+- In `src/lib/Recorder.svelte`:
+  - Rimosso lo spinner concorrente all'interno del pulsante REC (il pulsante resta disabilitato/opaco in idle col Play icon).
+  - Rimosse le pillole separate di salvataggio e trascrizione dal dock di stato: nessun messaggio "a parte", il feedback vive solo nella card in lista.
+- In `src/lib/RecordingsList.svelte`:
+  - Quando un elemento corrisponde a `session.processingItem`, la riga è disabilitata (non cliccabile, `disabled:cursor-default`).
+  - Il badge di stato riflette la fase:
+    - `"cancellazione rumore..."` con badge giallo/warn e mini-spinner durante l'AEC/elaborazione WAV.
+    - `"trascrizione in corso..."` con cronometro trascorso e mini-spinner durante Whisper.
+  - Al completamento, la card passa automaticamente al badge verde `"trascritto"` e diventa cliccabile.
+- Aggiornata la documentazione in `docs/reference.md`.
+
+---
+
+## 2026-10-19 — Automatic Gain Control (AGC2) e bilanciamento RMS tra microfono e sistema
+
+**Obiettivo:** Risolvere il problema della voce dell'utente troppo bassa sul canale sinistro rispetto all'audio digitale di sistema sul canale destro (15-20 dB di dislivello), causa principale di allucinazioni ed errori di trascrizione in Whisper e di speaker attribution sbilanciata.
+
+**Fatto:**
+- In `src-tauri/src/recorder/aec.rs`:
+  - Attivato `GainController2::default()` (WebRTC AGC2) nella configurazione di `sonora`: applica controllo adattivo digitale del guadagno guidato da Voice Activity Detection (RNN) e limiter anti-clipping.
+- In `src-tauri/src/recorder/audio.rs`:
+  - Implementate le primitive `active_speech_rms` (calcolo energia RMS sulle porzioni di parlato attivo ignorando i silenzi), `normalize_speech` (normalizzazione con guadagno controllato e peak limiter a 0.95) e `balance_speech_levels` (allineamento dell'RMS del mic al livello dell'audio di sistema).
+  - Aggiunti test unitari per verificare clamping, assenza di distorsione e pareggiamento dei livelli.
+- In `src-tauri/src/commands/recording.rs`:
+  - Applicato `balance_speech_levels` sul buffer mic prima della composizione del file stereo `interleave_stereo`: entrambi i canali hanno ora presenza ed energia paragonabili.
+- Aggiornati `docs/architecture.md` e `docs/reference.md`.
+
+---
+
+## 2026-10-19 — Disattivazione opaca del bottone registrazione e rimozione label "Already recording"
+
+**Obiettivo:** Evitare la visualizzazione della label di errore "Already recording" e disattivare visivamente in modo opaco (`disabled`, `opacity-40`, ombra rimossa, `cursor-not-allowed`) il pulsante di registrazione quando registrare non è consentito.
+
+**Fatto:**
+- In `src/lib/stores/session.svelte.ts`:
+  - Aggiunto lo stato `isStarting` (speculare a `isStopping`) per coprire la latenza dell'IPC `start_recording`.
+  - Aggiornato `locked` (`isRecording || isStarting || isStopping || isTranscribing`): nessun altro flusso può interferire mentre un'operazione è in corso.
+  - In `startRecording` e `stopRecording`: prevenute chiamate concorrenti/doppi click, e gestito l'errore backend ("Already recording" / "Registrazione già in corso") allineando silenziosamente lo stato a `isRecording = true` senza propagarlo come errore UI.
+- In `src/lib/Recorder.svelte`:
+  - Calcolato `isRecordDisabled`: quando la registrazione non è attiva, il bottone è disabilitato se il modello non è pronto, se whisper-server è fermo, se c'è una trascrizione in corso o se `isStarting`/`isStopping` è attivo.
+  - Aggiornato lo stile disabled del pulsante REC: bezel a `opacity-40 shadow-none border-brand-cream/5 bg-brand-darker/40`, bottone con `disabled:cursor-not-allowed disabled:shadow-none` e transizione fluida, rendendo il controllo visibilmente opaco e non interattivo.
+  - Filtrato il dock degli errori affinché eventuali stringhe "Already recording" / "Registrazione già in corso" non compaiano mai come label rossa d'errore.
+  - Tooltip dinamico su REC: spiega la specifica ragione di disattivazione ("Trascrizione in corso", gate STT, o stato di transizione).
+- In `src-tauri/src/commands/recording.rs`:
+  - Localizzate le stringhe d'errore in italiano (`"Registrazione già in corso"` e `"Nessuna registrazione in corso"`).
+- Aggiornata la documentazione in `docs/reference.md`.
+
+---
+
+## 2026-10-19 — WebRTC AEC3 via Sonora per l'eliminazione dell'echo da altoparlanti
+
+**Obiettivo:** Risolvere il problema dell'audio di sistema (voce dell'interlocutore nelle chiamate Teams/Meet) che rientra nel microfono quando si registra senza cuffie, degradando e falsando la diarizzazione L/R di Whisper.
+
+**Fatto:**
+- Sostituito l'AEC euristico semplificato in `src-tauri/src/recorder/aec.rs` (cross-correlazione a ritardo unico + attenuazione scalare) con **WebRTC AEC3** tramite il crate puro-Rust `sonora` (`0.2.0`).
+- Configurato il pipeline con:
+  - Echo Canceller 3 (AEC3): filtro adattivo a partizioni di frequenza con stima automatica del ritardo e gestione double-talk.
+  - Noise Suppression (NS): soppressione moderata del rumore stazionario di fondo.
+  - High-Pass Filter (HPF): eliminazione DC offset e frequenze sub-basse.
+- L'elaborazione opera a blocchi da 10ms (160 campioni a 16 kHz), alimentando il canale di sistema nel percorso *render* e il canale microfono nel percorso *capture*.
+- Zero impatto sull'interfaccia pubblica: la firma `cancel_echo(mic: &[f32], sys: &[f32], sample_rate: u32) -> Vec<f32>` resta identica, eseguita in `spawn_blocking` a fine registrazione.
+- Aggiornata la documentazione in `docs/architecture.md`.
+
+---
+
+## 2026-10-19 — Centratura icone nelle CTA e varianti di Button
+
+**Obiettivo:** Risolvere il problema delle icone decentrate (spostate verso il basso a destra) nei pulsanti CTA a icona compatta della schermata Impostazioni (`size-7`), e garantire una centratura perfetta per tutti i pulsanti.
+
+**Fatto:**
+- In `Button.svelte`:
+  - Aggiunto `inline-flex items-center justify-center` a tutte le varianti (`ghost`, `icon`, `solid`, `danger`, `primary`).
+  - Aggiornata la variante `icon` con `shrink-0 size-8 p-0`: il default a 32px con padding nullo consente a `tailwind-merge` di sovrascrivere la dimensione con classi come `size-7` (28px) senza che un padding ereditato (`p-2`, non sovrascritto da utilities di dimensione) riduca l'area utile e provochi l'overflow e il decentramento delle icone.
+- In `ServerControls.svelte`:
+  - Aggiunta la compensazione ottica `translate-x-px` sull'icona `Play` per bilanciare il baricentro del triangolo asimmetrico rispetto ai pulsanti simmetrici (`RotateCcw`, `Square`, `Trash2`).
+- Aggiornata la documentazione in `docs/reference.md`.
+
+---
+
+## 2026-10-19 — Riprogettazione UI pagina impostazioni e check permesso microfono
+
+**Obiettivo:** Riorganizzare la schermata `/settings` con sezioni collassabili (aperte di default senza animazione al landing), icone tematiche, titoli più grandi, check verde per il microfono, riordino sezioni ("Cartella Registrazioni" dopo "Permessi"), layout informativo coerente con CTA a sole icone compatte per i modelli e i server, e raggruppamento dell'LLM in una sezione unificata.
+
+**Fatto:**
+- **Backend Rust (`permissions.rs`, `commands/mod.rs`, `lib.rs`)**:
+  - Implementato `check_microphone_permission` su macOS tramite FFI nativo su `AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio` (`libobjc` + `AVFoundation`), senza aggiungere dipendenze esterne.
+  - Registrato il nuovo comando Tauri `commands::check_microphone_permission`.
+- **Sezioni Collassabili animate (`AccordionSection.svelte`, `SettingsPanel.svelte`)**:
+  - Creata la componente riutilizzabile `AccordionSection.svelte` con `transition:slide={{ duration: 200 }}` di Svelte per una transizione fluida e naturale in altezza sia in apertura che in chiusura, senza alcun effetto di transizione indesiderato al caricamento iniziale (le sezioni iniziano già aperte).
+  - Sfondo delle accordion impostato a `bg-brand-darker` con bordo `border-brand-cream/10` per uno stacco visivo poco più scuro rispetto al fondo pagina (`bg-brand-dark`), in armonia con le `.card` dell'app.
+  - Rotazione della freccia `ChevronDown` sincronizzata a 200ms.
+  - Auto-scroll da deep-linking (`router.querystring` con parametro `section`) aggiornato con `openStt` e `openLlm` per espandere automaticamente la sezione target se chiusa.
+- **Sezione Permessi**:
+  - Rilevamento in tempo reale di entrambi i permessi (Microfono e Registrazione Schermo) con badge "Concesso" (`text-ok` con check) e "Non concesso".
+  - Hover evidenziato e rifinito (`hover:bg-brand-cream/8 hover:border-brand-cream/20`) con cursore puntatore e tooltip espliciti.
+  - Aggiornamento automatico dei permessi al focus della finestra dell'app.
+- **Cartella Registrazioni**:
+  - Spostata immediatamente dopo "Permessi".
+  - Riga percorso testuale cliccabile e pulsante a icona `Folder` in linea per rivelare la cartella nel Finder.
+- **Sezione Modello Whisper**:
+  - Riga "Nome:" con il nome del modello (`Whisper large-v3-turbo (~1.5 GB)`) e CTA per il download/redownload ridotta a icona in linea (`Download` / `RotateCcw` / `LoaderCircle`).
+  - Riga "Stato:" con dot semantico coerente e label di stato.
+  - Riga "Percorso:" con path testuale cliccabile e pulsante `Folder` in linea.
+  - Barra di download visibile sotto la card solo durante il download.
+- **Sezione Server STT (Speech To Text)**:
+  - Titolo aggiornato con specifica "(Speech To Text)".
+  - Controlli server ridisegnati in `ServerControls.svelte`: riga di stato con dot semantico coordinato e pulsanti azione ridotti a sole icone compatte in linea (`Play`, `RotateCcw`, `Square`, `Trash2`).
+- **Sezione "LLM locale per chat"**:
+  - Raggruppate tutte le funzionalità LLM (info RAM, card modello GGUF selezionato con download a icona e stato coerente, ricerca Hugging Face, e controlli del server LLM con icone compatte) in una macro-sezione collassabile nella colonna destra.
+- **Documentazione**:
+  - Aggiornati [`docs/reference.md`](reference.md) con la firma del nuovo comando `check_microphone_permission` e la descrizione della nuova architettura UI di `SettingsPanel.svelte` e `ServerControls.svelte`.
+
+---
+
+## 2026-10-19 — Navigazione da indicatore server attivo a sezione impostazioni
+
+**Obiettivo:** Rendere l'indicatore di stato del server (`SttIndicator`) interattivo esclusivamente per aprire la pagina delle impostazioni e posizionarsi direttamente sulla sezione del server STT.
+
+**Fatto:**
+- In `SttIndicator.svelte`: sostituito il refresh manuale con la navigazione `push("/settings?section=stt-server")`. Aggiornati tooltip (`title="Apri impostazioni server"`) e `aria-label` per descrivere chiaramente l'affordance. Rimossa la dipendenza diretta dallo store `servers`.
+- In `SettingsPanel.svelte`: importato `router` da `svelte-spa-router`, introdotto `$effect` reattivo che verifica il parametro `section` nella querystring e, a caricamento completato delle impostazioni, esegue `scrollIntoView({ behavior: "smooth", block: "start" })` sull'ID di destinazione.
+- Aggiunti gli ID ancora `id="stt-server"` e `id="llm-server"` con classe Tailwind `scroll-mt-4` attorno ai blocchi `ServerControls`.
+
+---
+
+## 2026-10-19 — Ingrandimento REC, timer centrato e stop watermark minimale
+
+**Obiettivo:** Ingrandire il pulsante REC, centrare verticalmente il cronometro aumentandone la dimensione, rimuovere il testo "STOP" e visualizzare il quadrato di stop solo come watermark di background sotto il timer, poco visibile e più stretto della stringa del timer.
+
+**Fatto:**
+- Ingrandito il pulsante REC/STOP a `h-32 w-32` (128px), con proporzioni aumentate sia per lo stato idle (`text-lg font-bold tracking-[0.14em]` e dot `size-3`) sia in registrazione.
+- Rimossa la label testuale `STOP`, lasciando che sia la forma semantica a comunicare l'affordance.
+- Cronometro della durata ingrandito a `text-lg font-bold tabular-nums` e centrato esattamente sia in orizzontale che in verticale (`leading-none`).
+- Inserito il quadrato dello STOP in background sull'asse z (`absolute inset-0 m-auto size-16 rounded-lg bg-black/10 aria-hidden="true"`): opacità discreta confermata al 10% e dimensione aumentata a 64px (`size-16`), per un bilanciamento proporzionale ideale rispetto al cerchio da 128px e alle cifre del timer.
+- Rimossa la label testuale "REC" e il cerchietto bianco a riposo: il pulsante mostra unicamente il triangolo del PLAY (`Play size={88} fill="currentColor" text-black/10` con compensazione ottica a destra calibrata a `translate-x-0.5` e `scale-y-[1.08]`), offrendo un'estetica hardware pura, minimale e perfettamente bilanciata al centro del cerchio.
+- Reso cliccabile `SttIndicator` in alto a sinistra per forzare manualmente il refresh dello stato del server locale (`servers.refreshStt()`), e aggiunto in `App.svelte` un listener sull'evento `focus` della finestra per rieseguire automaticamente il check del server ad ogni ritorno nell'app.
+- Rimossi rilievi 3D artificiali, sfumature e bagliori luminosi (glow): uniformato lo stile del pulsante REC a quello pulito e minimale degli altri bottoni dell'app, con transizione a 200ms di colore pieno (`bg-rec` → `enabled:hover:bg-rec-strong`), ombra neutra `shadow-raised`, micro-scale (`scale-[1.02]`) e depressione al click (`active:scale-[0.96]`).
+
+
+## 2026-10-19 — Timer integrato nel pulsante REC su tasto stop opaco
+
+**Obiettivo:** Mostrare il cronometro di registrazione direttamente dentro il pulsante REC/STOP, sovrapposto a un tasto stop opaco.
+
+**Fatto:**
+- In stato di registrazione, il pulsante REC sfuma su un tasto stop quadrato opaco (`size-16 rounded-xl bg-black/35 border border-black/20 shadow-inner`) posizionato al centro del cerchio rosso.
+- Sopra al tasto stop quadrato compaiono la micro-label `STOP` e il cronometro monospazio in tempo reale (`tabular-nums font-mono text-xs font-bold text-ink-primary`).
+- Rimosso il cronometro dal dock sottostante, che ora rimane pulito e ospita solo badge di trascrizione ed eventuali errori a zero layout shift.
+
+---
+
+## 2026-10-19 — Pulsante import file a icona tonda a destra del REC
+
+**Obiettivo:** Trasformare l'azione di caricamento file in un pulsante circolare allineato a destra del REC, che non sparisce quando compare il cronometro ma rimane visibile disabilitato.
+
+**Fatto:**
+- Creato un wrapper relativo attorno al REC: il pulsante REC rimane esattamente centrato sullo schermo, mentre il pulsante import (`Button variant="icon"` con icona `Upload`) è posizionato a destra (`absolute left-full top-1/2 -translate-y-1/2 ml-5`).
+- Il pulsante import rimane visibile durante la registrazione e la trascrizione, rimanendo disabilitato (`disabled={session.locked || !session.canRecord}`, opacità al 40% e cursore standard).
+- Il dock inferiore è stato compattato ad altezza fissa `h-8`: quando parte la registrazione, il cronometro entra in dissolvenza incrociata senza causare alcun layout shift.
+
+---
+
+## 2026-10-19 — Differenziazione affordance cliccabile vs badge passivo e bordo icon button
+
+**Obiettivo:** Il pulsante impostazioni (`variant="icon"`) mancava del bordo coerente con il design system, e l'indicatore di stato rischiava di sembrare anch'esso un pulsante interattivo a causa della stessa elevazione.
+
+**Fatto:**
+- Aggiornata la variante `icon` in `Button.svelte`: aggiunto il bordo coordinato `border border-brand-cream/15` (con hover `hover:border-brand-cream/30`), feedback tattile `active:scale-[0.95]` e colore `text-ink-secondary`.
+- `SttIndicator` in alto a sinistra (`fixed left-4 top-4 z-10`) ripulito da sfondo, bordo e badge: si presenta come semplice dot semantico affiancato alla label (`text-xs text-ink-muted`, altezza `h-8`), allineato al pulsante impostazioni.
+- Limitata la visibilità alla sola home (`router.location === "/"` in `App.svelte`) per non interferire con il pulsante Indietro dell'header nelle pagine interne o duplicare lo stato in `/settings`.
+
+---
+
+## 2026-10-19 — Restyle bottone REC ed eliminazione del layout shift
+
+**Obiettivo:** Il bottone REC e i suoi controlli annessi (import file, cronometro, stato di trascrizione ed errori) causavano un vistoso layout shift spingendo in alto e in basso la lista "Registrazioni". Inoltre il pulsante REC era privo di incorniciatura hardware e l'azione di caricamento file era un semplice testo sottolineato.
+
+**Fatto:**
+- Inserito un bezel esterno tattile concentrico (`p-2.5 rounded-full border border-brand-cream/10 bg-brand-darker/60 shadow-raised`) attorno al bottone REC/STOP da `112px` (`h-28 w-28`), che in registrazione riscalda bordo ed alone.
+- Creato un dock di stato ad altezza rigidamente bloccata (`h-14 w-full max-w-md`) che mantiene costante l'altezza complessiva della hero section a 268px in qualsiasi stato: idle, registrazione, trascrizione, gate reason o errore.
+- Introdotte transizioni fluide di cross-fade (`transition:fade={{ duration: 150 }}`) sia per le label interne del bottone (REC ↔ STOP) sia per gli stati del dock, impilati in CSS Grid (`col-start-1 row-start-1`) per evitare sovrapposizioni e scatti visivi.
+- Sostituito il link ipertestuale "o carica un file" con una pillola dedicata rifinita con icona `Upload` di `@lucide/svelte`.
+- Aggiunto `tabular-nums` e micro-dot rosso pulsante al cronometro di registrazione per azzerare lo jitter orizzontale durante l'avanzamento dei secondi.
+- Sostituito il testo grezzo di trascrizione con un badge centrato con icona `LoaderCircle` rotante e cronometro monospazio.
+
+**Decisioni:**
+- Risolto il layout shift riservando uno slot verticale (`h-14`) con CSS Grid stack e `transition:fade`: durante l'animazione di uscita e ingresso i due stati occupano la stessa cella di griglia, garantendo una dissolvenza incrociata perfetta a zero layout shift.
+
+---
+
+## 2026-10-19 — GitHub Actions CI e Release automatica su merge a main
+
+**Obiettivo:** Configurare CI per validare pull request e rami di feature/fix, e automatizzare build e release di Earwig ad ogni merge sul branch `main`.
+
+**Fatto:**
+- Creato `.github/workflows/ci.yml`: esegue linting (Biome) e typecheck (Svelte) per il frontend, e `cargo check` su runner `macos-14` (Apple Silicon M1) con cache Cargo (`Swatinem/rust-cache`).
+- Creato `.github/workflows/release.yml`: si attiva ad ogni push/merge su `main` (o manualmente via `workflow_dispatch`).
+- Caching intelligente dei binari server: `whisper-server` e `llama-server` in `src-tauri/binaries/` vengono cachati con chiave hash sugli script `build-whisper-server.sh` e `build-llama-server.sh` (evitando minuti superflui di compilazione CMake a ogni merge).
+- Packaging macOS: compilazione bundle Tauri (`--target aarch64-apple-darwin`), estrazione del `.dmg`, generazione dell'archivio `.zip` del bundle `.app` tramite `ditto` (preservando attributi e symlink macOS), e calcolo checksum SHA-256 (`checksums-sha256.txt`).
+- Strategia di tag e rilascio robusta: se `v<version>` (da `package.json`) non esiste ancora sul remote, usa `v<version>`; in caso di merge successivi con la stessa versione prima di un bump esplicito, genera un tag univoco `v<version>-b<run_number>` senza conflitti.
+- Pubblicazione automatica con note di rilascio tramite `softprops/action-gh-release@v2`.
+- Aggiornata la documentazione in `docs/architecture.md`.
+
+**Decisioni:**
+- Runner `macos-14` (Apple Silicon M1): nativo per la compilazione Metal e per le librerie Swift/ScreenCaptureKit di macOS.
+- Target release principale `aarch64-apple-darwin`: garantisce massima stabilità, velocità e compatibilità nativa su tutti i Mac Apple Silicon.
+
 ---
 
 ## 2026-10-19 — Ombre a token

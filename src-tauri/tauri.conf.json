@@ -10,11 +10,14 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Earwig",
-        "width": 420,
-        "height": 640
+        "width": 640,
+        "height": 720,
+        "transparent": true,
+        "visible": false
       }
     ],
     "security": {
