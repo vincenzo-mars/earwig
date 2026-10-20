@@ -50,8 +50,6 @@ Punto di partenza: `src/lib/RecordingsList.svelte:81` (blocco "Durata STT / Badg
 
 Scelta da fare: animare il resize nativo lato Rust (CA transaction/window animation) e tenere il CSS solo per il contenuto, oppure disattivare il CSS e affidarsi al solo resize nativo. Finché non si sceglie un solo padrone dell'animazione, lo scatto resta.
 
-Scelta da fare: animare il resize nativo lato Rust (CA transaction/window animation) e tenere il CSS solo per il contenuto, oppure disattivare il CSS e affidarsi al solo resize nativo. Finché non si sceglie un solo padrone dell'animazione, lo scatto resta.
-
 ## 6. Posizione verticale della modalità ridotta persistente per utente
 
 - [ ] All'avvio la Y della linguetta compatta deve essere quella salvata dell'utente, non recentrata.
