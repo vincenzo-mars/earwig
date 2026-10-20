@@ -15,7 +15,7 @@ concurrency:
 jobs:
   frontend-check:
     name: Frontend Lint & Typecheck
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,10 +37,17 @@ jobs:
 
   rust-check:
     name: Rust Check
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version && xcrun --sdk macosx --show-sdk-version
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -51,6 +58,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+
+      - name: Stub bundled server binaries
+        run: mkdir -p src-tauri/binaries && touch src-tauri/binaries/whisper-server src-tauri/binaries/llama-server
 
       - name: Cargo Check
         run: cargo check --manifest-path src-tauri/Cargo.toml
