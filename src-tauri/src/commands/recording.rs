@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
-use super::stt::{check_stt_server, TranscriptError, TranscriptResult};
-use super::{get_stt_settings, local_model_path, recordings_dir};
+use super::stt::{TranscriptError, TranscriptResult};
+use super::{get_stt_settings, is_stt_model_ready, recordings_dir};
 use crate::recorder::audio::{self, TARGET_SAMPLE_RATE};
 use crate::recorder::{aec, mic, system_audio, RecorderState};
 
@@ -20,15 +20,10 @@ const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "m4a", "mp4", "flac", "ogg", "
 /// sia disallineato (es. chiamata programmatica, race sullo stato).
 async fn ensure_stt_ready(app: &AppHandle) -> Result<(), String> {
     let settings = get_stt_settings(app.clone()).await;
-    if !local_model_path(app, &settings).exists() {
+    if !is_stt_model_ready(app, &settings) {
         return Err(
-            "Modello whisper non scaricato: scaricalo dalle impostazioni prima di continuare"
+            "Modello vocale (Parakeet TDT v3) non scaricato: scaricalo dalle impostazioni prima di continuare"
                 .to_string(),
-        );
-    }
-    if check_stt_server().await != "running" {
-        return Err(
-            "Server whisper non attivo: avvialo dalle impostazioni prima di continuare".to_string(),
         );
     }
     Ok(())
@@ -37,11 +32,11 @@ async fn ensure_stt_ready(app: &AppHandle) -> Result<(), String> {
 /// Crea la cartella `<recordings_dir>/<timestamp>` per una nuova entry e
 /// ritorna il path del WAV da scriverci. Condivisa da `stop_recording` e
 /// `import_audio_file`, che devono produrre entry indistinguibili.
-async fn new_recording_path(app: &AppHandle) -> Result<PathBuf, String> {
+async fn new_recording_path(app: &AppHandle, custom_name: Option<String>) -> Result<PathBuf, String> {
     let settings = get_stt_settings(app.clone()).await;
     let dir = recordings_dir(app, &settings);
-    let timestamp = chrono::Local::now().format("%Y-%m-%d %H.%M.%S").to_string();
-    let folder = dir.join(&timestamp);
+    let folder_name = custom_name.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H.%M.%S").to_string());
+    let folder = dir.join(&folder_name);
     tokio::fs::create_dir_all(&folder)
         .await
         .map_err(|e| e.to_string())?;
@@ -161,7 +156,7 @@ pub async fn import_audio_file(app: AppHandle) -> Result<Option<String>, String>
     let mono = audio::to_mono(samples, channels);
     let mono16k = audio::resample_linear(&mono, sample_rate, TARGET_SAMPLE_RATE);
 
-    let path = new_recording_path(&app).await?;
+    let path = new_recording_path(&app, None).await?;
     audio::write_wav(&mono16k, &path, TARGET_SAMPLE_RATE, 1)?;
 
     Ok(Some(path.to_string_lossy().into_owned()))
@@ -189,7 +184,7 @@ pub async fn start_recording(
 
     let mut inner = state.0.lock().await;
     if inner.is_recording {
-        return Err("Already recording".to_string());
+        return Err("Registrazione già in corso".to_string());
     }
 
     let mic_buf = inner.mic_samples.clone();
@@ -200,8 +195,8 @@ pub async fn start_recording(
 
     let mic_info = mic::start_mic_capture(mic_buf)?;
     // SCStream (macOS) converte nativamente al rate richiesto — catturare l'audio
-    // di sistema già a TARGET_SAMPLE_RATE evita di doverlo ricampionare a valle.
-    let sys_capture = match system_audio::start(sys_buf, TARGET_SAMPLE_RATE, mic_info.channels) {
+    // di sistema a mono (1 canale) e a TARGET_SAMPLE_RATE evita downmix e resampling a valle.
+    let sys_capture = match system_audio::start(sys_buf, TARGET_SAMPLE_RATE, 1) {
         Ok(capture) => Some(capture),
         Err(e) => {
             eprintln!("Cattura audio di sistema non disponibile: {e}");
@@ -223,6 +218,7 @@ pub async fn start_recording(
 pub async fn stop_recording(
     state: State<'_, RecorderState>,
     app: AppHandle,
+    timestamp: Option<String>,
 ) -> Result<String, String> {
     // Dal lock si esce solo con i buffer e i parametri: resample/AEC/scrittura
     // su minuti di audio sono CPU-bound e non devono girare né dentro il lock
@@ -230,15 +226,17 @@ pub async fn stop_recording(
     let (mic_raw, sys, sr, ch, mic_native_rate, had_sys_audio) = {
         let mut inner = state.0.lock().await;
         if !inner.is_recording {
-            return Err("Not recording".to_string());
+            return Err("Nessuna registrazione in corso".to_string());
         }
 
+        // Resettiamo sempre lo stato a non registrando prima di qualsiasi operazione
+        // per evitare che errori di cleanup o chiamate concorrenti lascino il registratore bloccato.
+        inner.is_recording = false;
         inner.mic_stream = None;
         let had_sys_audio = inner.sys_capture.is_some();
         if let Some(mut sys) = inner.sys_capture.take() {
-            sys.stop()?;
+            let _ = sys.stop();
         }
-        inner.is_recording = false;
 
         let mic_raw = std::mem::take(&mut *inner.mic_samples.lock().unwrap());
         let sys = std::mem::take(&mut *inner.sys_samples.lock().unwrap());
@@ -252,7 +250,7 @@ pub async fn stop_recording(
         )
     };
 
-    let path = new_recording_path(&app).await?;
+    let path = new_recording_path(&app, timestamp).await?;
     let wav_path = path.clone();
     tokio::task::spawn_blocking(move || {
         // Il mic cattura al rate nativo del device (cpal non lo forza) e con il
@@ -270,6 +268,17 @@ pub async fn stop_recording(
             aec::cancel_echo(&mic, &sys, sr)
         } else {
             mic
+        };
+
+        // Bilanciamento del volume: dopo l'AEC il microfono ha spesso un livello RMS
+        // notevolmente inferiore rispetto all'audio digitale di sistema (catturato a 0/-6 dBFS).
+        // Pareggiamo l'RMS attivo del microfono a quello del sistema (o al target speech di 0.10)
+        // per garantire un ascolto stereo naturale, evitare che nel mix mono di Whisper la voce
+        // dell'utente scompaia causando allucinazioni, e rendere equo il confronto di energia L/R.
+        let mic = if had_sys_audio && !sys.is_empty() {
+            audio::balance_speech_levels(mic, &sys)
+        } else {
+            audio::normalize_speech(mic, 0.10)
         };
 
         // Con audio di sistema il file è stereo (mic a sinistra, sistema a
@@ -313,6 +322,26 @@ pub async fn list_recordings(app: AppHandle) -> Result<Vec<RecordingEntry>, Stri
             .await
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok());
+
+        if let Some(ref tr) = transcript {
+            let md_path = folder.join("transcript.md");
+            if !md_path.exists() {
+                let md = crate::commands::stt::build_transcript_markdown(
+                    &name,
+                    &folder.join("recording.wav"),
+                    tr,
+                );
+                let _ = tokio::fs::write(&md_path, &md).await;
+                if let Some(custom_vault) = &settings.transcripts_dir {
+                    let vault_dir = std::path::PathBuf::from(custom_vault);
+                    if vault_dir != folder {
+                        let _ = tokio::fs::create_dir_all(&vault_dir).await;
+                        let dest = vault_dir.join(format!("{name}.md"));
+                        let _ = tokio::fs::write(dest, &md).await;
+                    }
+                }
+            }
+        }
         // Il sidecar d'errore non ha motivo di esistere insieme a un transcript
         // valido (vedi `transcribe_recording`): lo si legge solo in sua assenza.
         let error = if transcript.is_none() {
