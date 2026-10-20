@@ -15,7 +15,7 @@ let {
 </script>
 
 <header
-  class="sticky top-0 z-20 flex shrink-0 items-center gap-3 border-b border-brand-cream/10 bg-brand-dark/95 px-6 py-3 backdrop-blur"
+  class="sticky top-0 z-20 flex shrink-0 items-center gap-3 border-b border-brand-cream/10 bg-brand-dark/95 px-6 pt-6 pb-4 backdrop-blur"
 >
   <Button
     variant="icon"
@@ -25,11 +25,13 @@ let {
   >
     <ArrowLeft size={16} />
   </Button>
-  <h2
-    class="m-0 text-xs font-semibold tracking-wider text-ink-muted uppercase"
-  >
-    {title}
-  </h2>
+  {#if title}
+    <h2
+      class="m-0 text-xs font-semibold tracking-wider text-ink-muted uppercase"
+    >
+      {title}
+    </h2>
+  {/if}
   {#if actions}
     <div class="ml-auto flex items-center gap-2">{@render actions()}</div>
   {/if}

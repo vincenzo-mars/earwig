@@ -22,13 +22,13 @@ Gli helper di percorso (`model_dir`, `local_model_path`, `recordings_dir`, `bund
 
 | Command | Input | Output | Effetti |
 |---|---|---|---|
-| `download_local_model` | — | `Result<(), String>` | Scarica il modello in streaming su `<model>.bin.part`, emette `download-progress`, fa rename atomico a fine download e aggiorna `local_ready` (informativo, vedi sopra) |
-| `start_stt_server` | — | `Result<(), String>` | Spawna `whisper-server` se la porta è libera e attende fino a 60s. Se la porta è già occupata, il lockfile decide: nostro processo col modello atteso → adottato senza rispawn, nostro col modello diverso → terminato e rispawnato, altrimenti si usa quello che risponde (vedi [`architecture.md`](architecture.md)) |
-| `stop_stt_server` | — | `Result<(), String>` | Killa il processo tracciato, attende che la porta 8080 si liberi (timeout 5s). Se lo slot è vuoto ma la porta è occupata, termina per pid solo un processo che il lockfile riconosce come nostro; altrimenti errore esplicito |
-| `restart_stt_server` | — | `Result<(), String>` | `stop_stt_server` + `start_stt_server`; fallisce con lo stesso errore se lo stop fallisce |
-| `delete_local_model` | — | `Result<(), String>` | Ferma il server (il processo tiene il `.bin` aperto), poi cancella il file del modello. Errore se lo stop fallisce |
-| `check_stt_server` | — | `String` | `"running"` oppure `"stopped"` |
-| `transcribe_recording` | `path: String` | `Result<TranscriptResult, String>` | POST a `/inference`, scrive `transcript.json` accanto al WAV; su errore scrive `transcript_error.json` (sidecar `{ message }`), su successo lo rimuove se presente. Riusata anche per il rilancio: nessuna firma dedicata |
+| `download_local_model` | — | `Result<(), String>` | Scarica in streaming da Hugging Face i 3 file di Parakeet TDT 0.6B v3 (`vocab.txt`, `encoder-model.int8.onnx`, `decoder_joint-model.int8.onnx`) su file `.part` temporanei, emette `download-progress`, fa rename atomico e aggiorna `local_ready` |
+| `start_stt_server` | — | `Result<(), String>` | Preriscalda in-process la sessione ONNX `ParakeetTDT` nello stato gestito `SttEngineState` se il modello è presente su disco |
+| `stop_stt_server` | — | `Result<(), String>` | Rilascia la sessione del motore in-process impostando `SttEngineState` a `None`, liberando istantaneamente la RAM |
+| `restart_stt_server` | — | `Result<(), String>` | `stop_stt_server` + `start_stt_server` (scarica e ricarica la sessione ONNX in memoria) |
+| `delete_local_model` | — | `Result<(), String>` | Rilascia il motore in-process e cancella la cartella del modello `parakeet-tdt-0.6b-v3` dal disco |
+| `check_stt_server` | — | `String` | `"running"` se i file del modello sono presenti su disco, oppure `"stopped"` |
+| `transcribe_recording` | `path: String` | `Result<TranscriptResult, String>` | Trascrizione in-process con Parakeet TDT 0.6B v3 a chunk di 120s: de-interleave stereo per diarizzazione fisica ("0" Tu, "1" Altri), scrive `transcript.json` con `transcription_ms`, genera `transcript.md` con frontmatter YAML per Obsidian (e lo copia in `transcripts_dir` se configurata), e rimuove l'eventuale `transcript_error.json` (o lo genera in caso di fallimento) |
 
 ### LLM locale (`commands/llm.rs`)
 
@@ -52,8 +52,8 @@ Gli helper di percorso (`model_dir`, `local_model_path`, `recordings_dir`, `bund
 
 | Command | Input | Output | Effetti |
 |---|---|---|---|
-| `start_recording` | — | `Result<(), String>` | Errore se già in corso, oppure se il modello non è scaricato o whisper-server non è in esecuzione (vedi `ensure_stt_ready` in [`architecture.md`](architecture.md)); altrimenti avvia mic e audio di sistema |
-| `stop_recording` | — | `Result<String, String>` | Ferma, applica AEC, scrive il WAV, ritorna il path |
+| `start_recording` | — | `Result<(), String>` | Errore se già in corso, oppure se il modello non è scaricato (vedi `ensure_stt_ready` in [`architecture.md`](architecture.md)); altrimenti avvia mic e audio di sistema |
+| `stop_recording` | `timestamp: Option<String>` | `Result<String, String>` | Ferma, applica AEC + AGC2 e bilanciamento RMS, scrive il WAV (usando il timestamp opzionale passato dal frontend o quello calcolato da chrono), ritorna il path |
 | `list_recordings` | — | `Result<Vec<RecordingEntry>, String>` | Scansiona la cartella Records, ordina per nome decrescente. `error` (messaggio da `transcript_error.json`) è letto solo quando `transcript` è assente |
 | `import_audio_file` | — | `Result<Option<String>, String>` | Stessa guardia `ensure_stt_ready` di `start_recording`; poi picker, decodifica, salva come registrazione. `None` se annullato |
 
@@ -61,12 +61,24 @@ Gli helper di percorso (`model_dir`, `local_model_path`, `recordings_dir`, `bund
 
 | Command | Input | Output | Effetti |
 |---|---|---|---|
+| `check_microphone_permission` | — | `bool` | `[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]` via FFI nativo (CoreMedia/AVFoundation + libobjc), sola lettura, nessun prompt |
 | `check_screen_recording_permission` | — | `bool` | `CGPreflightScreenCaptureAccess`, sola lettura, nessun prompt |
 | `open_permission_settings` | `pane: "microphone" \| "screen-recording"` | `Result<(), String>` | Apre il pannello Privacy & Security via `open x-apple.systempreferences:...` |
+| `get_transcripts_dir` | — | `String` | Ritorna il percorso effettivo per le note Markdown (vault personalizzato o fallback su `recordings_dir`) |
+| `set_transcripts_dir` | `path: Option<String>` | `Result<String, String>` | Aggiorna `transcripts_dir` in `settings.json` (`None` per ripristinare il default); crea la directory se mancante e ne ritorna il path |
+
+### Gestione finestra e modalità ridotta (`commands/window.rs`)
+
+| Command | Input | Output | Effetti |
+|---|---|---|---|
+| `set_compact_mode` | `enabled: bool` | `Result<(), String>` | Alterna fra la finestra standard (640x720 con decorazioni native) e la modalità ridotta ancorata al bordo destro dello schermo (senza decorazioni, always-on-top). Salva e ripristina coordinate e dimensioni |
+| `set_compact_hover` | `hovered: bool, is_recording: bool` | `Result<(), String>` | Adatta dinamicamente larghezza e posizione X della finestra compatta in base al passaggio del mouse e allo stato di registrazione |
+| `set_compact_y` | `y: f64` | `Result<(), String>` | Sposta verticalmente la barra compatta lungo il bordo dello schermo con clamping tra menu bar e dock macOS |
+| `get_compact_position` | — | `Result<(f64, f64), String>` | Ritorna le coordinate correnti (X, Y) logiche della finestra compatta per il drag |
+| `show_dashboard` | — | `Result<(), String>` | Mostra, rimuove dalla minimizzazione e porta in primo piano la finestra principale, impostando la policy del Dock a `Regular` |
+| `hide_dashboard` | — | `Result<(), String>` | Nasconde la finestra e imposta la policy del Dock a `Accessory` (rimossa dal Dock a meno che non sia fissata) |
 
 `pane` è convertito in un enum chiuso prima di toccare il comando di sistema: un valore non riconosciuto ritorna `Err` e non arriva mai a `open`.
-
-Per il microfono non c'è un check di stato: l'unica API è `AVCaptureDevice.authorizationStatus`, Objective-C, e fare il bridging con `objc2` solo per un pallino non vale la complessità.
 
 ## Eventi
 
@@ -74,18 +86,19 @@ Per il microfono non c'è un check di stato: l'unica API è `AVCaptureDevice.aut
 |---|---|---|
 | `download-progress` | `{ step: "model" \| "done", pct: number }` | `download_local_model` |
 | `llm-download-progress` | `{ step: "llm" \| "done", pct: number }` | `download_llm_model` |
+| `open-settings` | `()` | Menu contestuale della tray icon ("Impostazioni...") |
 
-Evento separato dal precedente invece di un nuovo `step` su `download-progress`: quell'evento ha già due listener indipendenti (`SettingsPanel` e `Onboarding`), e uno `step: "done"` condiviso farebbe scattare per errore, nel listener whisper di `SettingsPanel`, il codice che marca `localReady = true`.
+Evento separato dal precedente invece di un nuovo `step` su `download-progress`: quell'evento ha già due listener indipendenti (`SettingsPanel` e `Onboarding`), e uno `step: "done"` condiviso farebbe scattare per errore, nel listener STT di `SettingsPanel`, il codice che marca `localReady = true`.
 
 ## Tipi condivisi (`src/lib/types.ts`)
 
 `SttSettings`, `RecordingEntry`, `TranscriptResult`, `TranscriptSegment`, `DownloadProgress`, `LlmDownloadProgress`, `ServerStatus`, `SttStatus`, `TranscriptStatus`, `NotesSummary`, `ChatRole`, `ChatMessage`, `RecordingNotes`, `HfModelSummary`, `HfGgufFile`, `HfModelDetail`.
 
-`ServerStatus` = `"checking" | "starting" | "running" | "error" | "stopped" | "loading"`, stato di un server locale gestito dall'app (whisper o LLM). `"stopped"` è distinto da `"error"`: è l'esito di uno stop esplicito (impostazioni), non di un fallimento. `"loading"` è specifico dell'LLM (`llama-server` apre la porta prima di aver caricato il modello; whisper-server no, quindi non lo usa mai). `SttStatus` è un alias di `ServerStatus` per non far churnare `SttIndicator`/`SettingsPanel`.
+`ServerStatus` = `"checking" | "starting" | "running" | "error" | "stopped" | "loading"`, stato di un motore/server locale gestito dall'app (motore in-process STT o processo LLM). `"stopped"` è distinto da `"error"`: è l'esito di uno stop esplicito (impostazioni o modello non scaricato), non di un fallimento. `"loading"` è specifico dell'LLM (`llama-server` apre la porta prima di aver caricato il modello; il motore STT in-process non lo usa mai). `SttStatus` è un alias di `ServerStatus` per non far churnare `SttIndicator`/`SettingsPanel`.
 
 `LlmDownloadProgress { step: "llm" | "done", pct: number }`: stessa forma di `DownloadProgress`, ma su un evento dedicato (vedi sopra).
 
-`SttSettings.llmHfRepo`/`llmHfFile: string` (`""` = nessun modello scelto) sono il modello LLM selezionato dall'utente in Settings. `llmSizeBytes: number` è la size del file scelto (nota dal frontend al momento della selezione, da `HfGgufFile.size_bytes`), usata solo per etichettare il bottone di download. `llmReady: boolean` rispecchia `localReady`: ricalcolato da `get_stt_settings` verificando `llm_model_path` sul disco, mai la fonte di verità è il valore persistito.
+`SttSettings.transcriptsDir: string | null` è il percorso opzionale della cartella per le note Markdown (es. Vault Obsidian); se `null`, le note vengono salvate nella cartella predefinita di ciascuna registrazione. `SttSettings.llmHfRepo`/`llmHfFile: string` (`""` = nessun modello scelto) sono il modello LLM selezionato dall'utente in Settings. `llmSizeBytes: number` è la size del file scelto (nota dal frontend al momento della selezione, da `HfGgufFile.size_bytes`), usata solo per etichettare il bottone di download. `llmReady: boolean` rispecchia `localReady`: ricalcolato da `get_stt_settings` verificando `llm_model_path` sul disco, mai la fonte di verità è il valore persistito.
 
 `NotesSummary { text, key_points: string[], actions: string[], open_questions: string[], model, generated_at }`, `ChatMessage { id, role: ChatRole, content, at }` (`ChatRole` = `"user" | "assistant"`), `RecordingNotes { version, summary: NotesSummary | null, messages: ChatMessage[] }`: rispecchiano 1:1 le struct Rust in `commands/llm.rs` (snake_case, come `RecordingEntry`/`TranscriptResult`, non camelCase come `SttSettings`).
 
@@ -99,11 +112,12 @@ Helper di presentazione nello stesso file:
 
 | Helper | Ruolo |
 |---|---|
-| `speakerInfo(speaker)` | Mappa la chiave grezza a `{ label, color }`: `"0"` → YOU blu, `"1"` → THEM verde, tutto il resto → Sconosciuto grigio |
+| `speakerInfo(speaker)` | Mappa la chiave grezza a `{ label, color, badgeClass }`: `"0"` → "Tu" (rosso), `"1"` → "Altri" (viola), tutto il resto → "Voce" (grigio) |
 | `groupSegments(segments)` | Accorpa segmenti consecutivi con lo stesso speaker |
 | `formatDuration(ms)` | `hh:mm:ss`, per il cronometro di registrazione |
 | `formatSeconds(s)` | `m:ss`, per i timestamp dei segmenti |
 | `formatElapsed(ms)` | `12.4s` sotto il minuto, poi `m:ss` |
+| `formatRecordingDate(name)` | Converte il nome cartella `YYYY-MM-DD HH.mm.ss` in data naturale (`"Oggi, 14:23"`, `"Ieri, 09:12"`, `"18 Ott, 16:45"`) |
 | `transcriptStatus(entry)` | `RecordingEntry` → `TranscriptStatus` (`transcript` presente → `"transcribed"`, altrimenti `error` presente → `"failed"`, altrimenti `"pending"`) |
 | `transcriptStatusInfo(entry)` | `transcriptStatus(entry)` → `{ label, className }` per il badge a 3 stati di `RecordingsList` |
 
@@ -115,21 +129,23 @@ Le dipendenze vanno in una sola direzione, `recordings` → `session` → `serve
 
 ### `servers.svelte.ts`
 
-Stato dei due server locali: `sttStatus`, `llmStatus` (`ServerStatus`), `modelReady`, `llmReady`.
+Stato dei due motori locali: `sttStatus`, `llmStatus` (`ServerStatus`), `modelReady`, `llmReady`.
 
-`refreshStt(opts?: { attemptStart?: boolean }): Promise<SttSettings | null>` è il punto unico di riallineamento fra stato reale (whisper-server + modello sul disco) e stato mostrato in UI: legge `get_stt_settings` (aggiorna `modelReady` da `localReady`) e `check_stt_server`, poi imposta `sttStatus` di conseguenza (`"checking"` mentre gira, poi `"running"` / `"stopped"` / `"starting"`→`"running"` / `"error"`). Con `attemptStart: true` (default) un server non in esecuzione viene avviato, come al mount; con `attemptStart: false` un server fermo resta `"stopped"` invece di essere riavviato, il caso di chi lo ha appena fermato di proposito dalle impostazioni. Ritorna le `SttSettings` lette (o `null` in errore). Chiamata al mount, da `SettingsPanel` dopo ogni azione sul server o sulle impostazioni, e dalla `onContinue` di `Onboarding`; chiunque cambi lo stato del server o del modello la richiama invece di duplicare la logica di check/avvio.
+`refreshStt(opts?: { attemptStart?: boolean }): Promise<SttSettings | null>` è il punto unico di riallineamento fra stato reale (motore Parakeet TDT + modello sul disco) e stato mostrato in UI: legge `get_stt_settings` (aggiorna `modelReady` da `localReady`) e `check_stt_server`, poi imposta `sttStatus` di conseguenza (`"checking"` mentre gira, poi `"running"` / `"stopped"` / `"starting"`→`"running"` / `"error"`). Con `attemptStart: true` (default) un motore pronto viene confermato, come al mount; con `attemptStart: false` un motore fermo resta `"stopped"`. Ritorna le `SttSettings` lette (o `null` in errore). Chiamata al mount, da `SettingsPanel` dopo ogni azione sul server o sulle impostazioni, e dalla `onContinue` di `Onboarding`; chiunque cambi lo stato del server o del modello la richiama invece di duplicare la logica di check/avvio.
 
-`refreshLlm(opts?)` è il mirror per il server LLM: stessa forma, stessa fonte di verità (`get_stt_settings` + `check_llm_server`), ma **default invertito** — `attemptStart` è `false` qui contro il `true` di STT. Al mount si osserva soltanto: caricare un modello LLM da 1-5GB per una feature che molte sessioni non toccano mai non ha senso, a differenza di whisper che serve sempre. Aggiorna anche `llmReady` (modello LLM presente sul disco, ricalcolato a ogni chiamata): è il gate del bottone "Avvia il server LLM" in `TranscriptNotes`, e resta allineato da sé perché `SettingsPanel` richiama `refreshLlm` dopo download, cambio modello ed eliminazione della cache.
+`refreshLlm(opts?)` è il mirror per il server LLM: stessa forma, stessa fonte di verità (`get_stt_settings` + `check_llm_server`), ma **default invertito** — `attemptStart` è `false` qui contro il `true` di STT. Al mount si osserva soltanto: caricare un modello LLM da 1-5GB per una feature che molte sessioni non toccano mai non ha senso, a differenza di STT che serve per le trascrizioni. Aggiorna anche `llmReady` (modello LLM presente sul disco, ricalcolato a ogni chiamata): è il gate del bottone "Avvia il server LLM" in `TranscriptNotes`, e resta allineato da sé perché `SettingsPanel` richiama `refreshLlm` dopo download, cambio modello ed eliminazione della cache.
 
-`llmStatus` non si assegna mai direttamente: passa da `setLlmStatus`, che accende un poll di `check_llm_server` ogni 2s finché lo stato è `"loading"`/`"starting"` e lo spegne appena esce. A differenza di whisper il tempo di avvio dell'LLM è imprevedibile e nessun secondo click dell'utente aggiornerebbe altrimenti la UI. Il poll vive nel modulo (`setInterval`), non in un `$effect` di un componente, così non dipende da chi è montato in quel momento.
+`llmStatus` non si assegna mai direttamente: passa da `setLlmStatus`, che accende un poll di `check_llm_server` ogni 2s finché lo stato è `"loading"`/`"starting"` e lo spegne appena esce. A differenza del motore STT in-process il tempo di avvio dell'LLM è variabile (caricamento modello GGUF in memoria) e nessun secondo click dell'utente aggiornerebbe altrimenti la UI. Il poll vive nel modulo (`setInterval`), non in un `$effect` di un componente, così non dipende da chi è montato in quel momento.
 
 ### `session.svelte.ts`
 
-Sessione di lavoro: `isRecording`, `isTranscribing`, `durationMs`, `transcribeMs`, `error`, più i derivati `locked`, `canRecord`, `recordGateReason`.
+Sessione di lavoro: `isRecording`, `isStarting`, `isStopping`, `isTranscribing`, `processingItem` (`ProcessingItem`), `durationMs`, `transcribeMs`, `error`, più i derivati `locked`, `canRecord`, `recordGateReason`.
 
-`canRecord` (`sttStatus === "running" && modelReady`, letti da `servers`) è il gate lato UI per registrazione e import, e rispecchia `ensure_stt_ready` lato backend (vedi [`architecture.md`](architecture.md)); `recordGateReason` è il messaggio in italiano quando `!canRecord`, che distingue "modello non scaricato" da "server non attivo". Quando `!canRecord`: il bottone REC resta abilitato per lo STOP (non blocca una registrazione già in corso) ma non per l'avvio, "o carica un file" è disabilitato, entrambi mostrano `recordGateReason` come `title`, e lo stesso testo appare come paragrafo sotto i bottoni. `startRecording`/`importFile` ripetono il controllo a runtime, non solo sull'attributo `disabled`, per coerenza con la guardia backend.
+`canRecord` (`sttStatus === "running" && modelReady`, letti da `servers`) è il gate lato UI per registrazione e import, e rispecchia `ensure_stt_ready` lato backend (vedi [`architecture.md`](architecture.md)); `recordGateReason` è il messaggio in italiano quando `!canRecord`, che distingue "modello non scaricato" da "server non attivo". Quando registrare non è disponibile (`!canRecord`, `isTranscribing`, `isStarting`, `isStopping`): il bottone REC in `Recorder.svelte` viene disattivato in modo opaco (bordo e sfondo attenuati, ombra rimossa, opacità 40%, `cursor-not-allowed`) senza spinner concorrenti all'interno né pillole separate nel dock. Le fasi di elaborazione non vengono scritte "a parte": appena la registrazione viene interrotta, l'entry appare direttamente nell'elenco registrazioni in stato di caricamento inline.
 
-`locked` (`isRecording || isTranscribing`) è il lock condiviso: un solo flusso di trascrizione alla volta, e mentre è attivo lista e dettaglio disabilitano **ogni** riga, non solo quella interessata.
+`processingItem` (`{ name, folderPath?, phase: "noise_cancellation" | "transcribing" }`) traccia l'elemento attualmente in elaborazione (AEC/cancellazione rumore o trascrizione STT), sia per una nuova registrazione sia per un rilancio o import.
+
+`locked` (`isRecording || isStarting || isStopping || isTranscribing`) è il lock condiviso: un solo flusso alla volta, e mentre è attivo lista e dettaglio disabilitano **ogni** riga, non solo quella interessata.
 
 `runTranscription(path)` è la primitiva che tiene insieme lock e cronometro; la usano lo stop della registrazione, l'import e il rilancio in `recordings`. I cronometri (`durationMs`, `transcribeMs`) sono timer locali del frontend: il frontend è l'unico a poter avviare i due flussi, quindi conosce già l'istante di inizio e non serve interrogare il backend via IPC.
 
@@ -137,36 +153,40 @@ Sessione di lavoro: `isRecording`, `isTranscribing`, `durationMs`, `transcribeMs
 
 ### `recordings.svelte.ts`
 
-Cache di `list_recordings` (`all`, `loading`) con `load(force = false)` e `byName(name)`. È la fonte unica per lista e dettaglio: senza, il dettaglio raggiunto per URL dovrebbe rifare `list_recordings` per conto suo e le due copie andrebbero riallineate a mano dopo ogni rilancio.
+Cache di `list_recordings` (`all`, `loading`) con `load(force = false)` e `byName(name)`. `all` deriva la lista aggiungendo in cima l'eventuale `session.processingItem` non ancora salvato su disco: questo fa comparire subito la nuova entry in `RecordingsList` come riga non cliccabile in elaborazione con il badge di stato dedicato (`cancellazione rumore...` e poi `trascrizione in corso...`), fino al completamento e ricaricamento automatico dal filesystem.
 
-`retryTranscription(folderPath: string): Promise<RecordingEntry[]>` esce subito se `session.locked` (guardia ridondante rispetto al `disabled` dei bottoni), altrimenti chiama `session.runTranscription` su `<folderPath>/recording.wav` ignorando un eventuale errore: l'esito è già persistito su disco da `transcribe_recording` (`transcript.json` o `transcript_error.json`), quindi la `load(true)` finale lo rilegge senza doverlo duplicare in un banner.
+`retryTranscription(folderPath: string): Promise<RecordingEntry[]>` imposta `session.processingItem` su `phase: "transcribing"` per mostrare lo stato di caricamento inline sulla riga corrispondente, esegue `session.runTranscription` e ricarica i risultati dal disco.
 
 ## Routing (`src/lib/routes.ts`)
 
 [`svelte-spa-router`](https://github.com/ItalyPaleAle/svelte-spa-router) con hash routing. Sotto Tauri il documento è servito da un protocollo custom e non c'è nessun server che possa riscrivere i path: `#/...` è l'unica forma di URL che regge un reload.
 
+L'applicazione adotta un'architettura a **schermata base permanente con modali sovrapposte**:
+
 | Rotta | Componente | Note |
 |---|---|---|
-| `/` | `Recorder.svelte` | schermata REC **e** lista registrazioni |
-| `/detail/:id` | `RecordingDetail.svelte` | `id` = `entry.name`, cioè il nome della cartella: già univoco nella recordings dir e già filesystem-safe. Passa da `encodeURIComponent` in scrittura e `decodeURIComponent` in lettura |
-| `/settings` | `SettingsPanel.svelte` | |
-| `*` | `Recorder.svelte` | un hash sconosciuto non lascia la finestra vuota |
+| `/` | `Recorder.svelte` | schermata base con hero REC e lista registrazioni |
+| `/detail/:id` | `RecordingDetail.svelte` | modale overlay sopra la home; `id` = `entry.name`, cioè il nome della cartella. Passa da `encodeURIComponent` in scrittura e `decodeURIComponent` in lettura |
+| `/settings` | `SettingsPanel.svelte` | modale overlay sopra la home per impostazioni e server |
+| `*` | `Recorder.svelte` | un hash sconosciuto torna alla home senza modali |
 
-Non esiste una rotta per la lista: le registrazioni stanno in home sotto il bottone REC (`RecordingsList.svelte`), così arrivarci non costa una navigazione.
+Non esiste una rotta a pagina intera per la lista né per il dettaglio o le impostazioni: la home con REC e lista (`Recorder.svelte`) resta sempre montata nello sfondo. Quando l'hash corrisponde a `/settings` o `/detail/:id`, la vista corrispondente viene montata come modale nativa (`Modal.svelte`) sopra la home, con backdrop scuro semitrasparente e sfocato (`bg-black/60 backdrop-blur-sm`).
 
-Navigazione con `push` (`svelte-spa-router`), tranne due casi: le impostazioni chiudono con `pop()`, perché si aprono da qualsiasi schermata e devono tornare da dove si è arrivati; il dettaglio con un `id` inesistente usa `replace("/")`, per non lasciare in history una rotta morta.
+Navigazione con `push` (`svelte-spa-router`) per aprire le modali (`push("/settings")`, `push("/detail/<name>")`). La chiusura avviene tramite il tasto `X` nell'header della modale, la pressione del tasto `Escape`, il click sul backdrop esterno o il gesto/tasto Indietro dell'OS: tutte invocano `replace("/")` o `closeModal()`, riallineando l'hash senza lasciare rotte morte nella history.
 
-Nessuna route è lazy-loaded: sono tre componenti già nel bundle, il code splitting non ripagherebbe l'attesa alla prima navigazione.
+### Layout e modali (`Modal.svelte`)
 
-### Layout delle pagine
+Il guscio in `App.svelte` è `relative flex h-screen flex-col overflow-hidden`: la schermata base `Recorder.svelte` occupa la finestra e gestisce il proprio scroll per la lista registrazioni.
 
-Il guscio in `App.svelte` è `flex h-screen flex-col overflow-hidden`, senza padding né centraggio: ogni rotta decide la propria larghezza e lo scroll vive dentro la rotta, così l'header di pagina può restare `sticky`.
-
-Le due pagine interne hanno la stessa struttura: `PageHeader` in cima, poi un contenitore `flex-1 overflow-y-auto px-6 pt-5 pb-18` a tutta larghezza. Il `pb-18` lascia passare la pillola di stato, `fixed` in basso a sinistra.
-
-La home è divisa in due zone verticali: l'hero REC (`shrink-0`, non scrolla mai) e sotto la lista in `flex-1 overflow-y-auto`, che ha lo stesso `pb-18`. La lista si ferma a `max-w-200` (800px) centrata: righe più larghe allontanerebbero troppo il nome dal badge di stato.
-
-La larghezza piena vale per le impostazioni. Fanno eccezione due punti, per leggibilità: il testo della trascrizione e le note stanno in una colonna `max-w-[72ch]` centrata, e la griglia delle impostazioni si ferma a `max-w-400` (1600px) — oltre, le sue due colonne si stirerebbero lasciando una voragine in mezzo.
+Le due schermate secondarie (`SettingsPanel` e `RecordingDetail`) sono racchiuse dentro il componente riutilizzabile `Modal.svelte`:
+- **Comportamento a tutta finestra**: quando la finestra è troppo piccola (`innerWidth < 640` o `innerHeight < 600`, monitorati tramite `bind:innerWidth` e `bind:innerHeight` su `<svelte:window>`), la modale si espande a **tutta finestra** (`h-full w-full rounded-none border-0 shadow-none p-0`), azzerando i margini e sfruttando ogni pixel dello schermo. Quando la finestra è sufficientemente capiente, torna automaticamente a presentarsi come modale flottante centrata con angoli arrotondati e ombra: con le dimensioni di default 640x720 dell'app la modale apre già così, e torna a tutta finestra solo se l'utente restringe la finestra sotto la soglia.
+- **Backdrop**: `fixed inset-0 z-50 bg-black/60 backdrop-blur-sm` (in modalità compatta a tutta finestra diventa `bg-brand-dark p-0`), con transizione `fade` (150ms). Un controllo su mousedown + click assicura che selezioni di testo o trascinamenti all'interno non chiudano accidentalmente la modale al rilascio del cursore.
+- **Finestra modale**: contenitore centrato con bordo `border-brand-cream/10`, sfondo `bg-brand-dark`, ombra elevata `shadow-2xl`, angoli arrotondati `rounded-2xl` e transizione `scale` (start 0.96, 150ms) per dare l'effetto pop-in tipico delle finestre di dialogo native macOS.
+- **Header modale**: barra superiore fissa (`px-6 py-4 border-b border-brand-cream/8 bg-brand-dark/95`, compatta a `px-4 py-3` su finestre piccole) con titolo uppercase discreto a sinistra, eventuali azioni e pulsante di chiusura circolare `Button variant="icon"` con icona `X` a destra.
+- **Accessibilità**: attributi `role="dialog"`, `aria-modal="true"`, gestione evento `Escape` su window con stopPropagation.
+- **Dimensioni**:
+  - `SettingsPanel`: `maxWidth="max-w-xl"`, altezza dinamica fino a `max-h-[88vh]` con scroll verticale interno `overflow-y-auto` (a tutta finestra su schermi compatti).
+  - `RecordingDetail`: `maxWidth="max-w-5xl"`, altezza bloccata `h-[85vh]` su schermi ampi. Su finestre compatte (`< md`) il layout si riadatta fluidamente in verticale: la trascrizione occupa l'area superiore a scorrimento e il dock con durata, percorso Finder e azioni rapide siede compatto in fondo.
 
 ### `PageHeader.svelte`
 
@@ -182,9 +202,9 @@ Svelte 5 con le rune (`$state`, `$derived`, `$effect`, `$props`), un componente 
 
 ### `App.svelte` (root)
 
-Guscio dell'app, senza stato proprio: monta `<Router>` e `SttIndicator` (pillola di stato, `fixed` in basso a sinistra, visibile su ogni rotta).
+Guscio dell'app, senza stato proprio: monta `<Recorder />` come schermata base permanente e `SttIndicator` (pillola di stato, `fixed` in alto a sinistra, visibile in home). Reagisce a `router.location` per montare come modale `SettingsPanel` (se `/settings`) o `RecordingDetail` (se `/detail/:id`). Ascolta l'evento `open-settings` inviato dalla tray icon di sistema per aprire direttamente la modale delle impostazioni.
 
-Rendering condizionato da `servers.modelReady`, valutato allo stesso modo indipendentemente dal motivo per cui il modello manca (primo avvio mai configurato, o modello eliminato in un secondo momento dalle impostazioni): se `!modelReady` l'intera UI normale — router compreso — è sostituita da `Onboarding` a schermo intero, nessun ramo separato per i due casi.
+Rendering condizionato da `servers.modelReady`, valutato allo stesso modo indipendentemente dal motivo per cui il modello manca (primo avvio mai configurato, o modello eliminato in un secondo momento dalle impostazioni): se `!modelReady` l'intera UI normale è sostituita da `Onboarding` a schermo intero, nessun ramo separato per i due casi.
 
 Flusso:
 1. Mount → `servers.refreshStt()` + `servers.refreshLlm()`; se `!modelReady` si mostra `Onboarding` al posto della UI normale
@@ -192,16 +212,33 @@ Flusso:
 3. REC → `session.startRecording()` → `start_recording`
 4. STOP → `session.stopRecording()` → `stop_recording` → `transcribe_recording`
 5. "o carica un file" (solo a riposo) → `session.importFile()` → se ritorna `true`, `recordings.load(true)`
-6. Click su una riga della lista in home → `push("/detail/<name>")`
-7. Rilancio trascrizione (da `RecordingsList` o `RecordingDetail`) → `recordings.retryTranscription(folderPath)`
+6. Click su una riga della lista in home → `push("/detail/<name>")` apre la modale di dettaglio sopra la home
+7. Click sull'icona impostazioni in home → `push("/settings")` apre la modale delle impostazioni sopra la home
+8. Rilancio trascrizione (da `RecordingsList` o `RecordingDetail`) → `recordings.retryTranscription(folderPath)`
 
 Il riallineamento manuale dell'entry aperta dopo un rilancio non serve più: lista e dettaglio derivano entrambi da `recordings`, quindi la `load(true)` finale li aggiorna insieme.
 
 ### `Recorder.svelte`
 
-La home: hero REC in alto e `RecordingsList` sotto. Bottone REC/STOP, "o carica un file", cronometro, stato della trascrizione ed eventuale errore: tutto letto da `session`, nessuna prop. Ospita anche il bottone impostazioni (`fixed` in alto a destra).
+La home: hero REC in alto e `RecordingsList` sotto. Bottone REC/STOP con timer integrato su tasto stop opaco, stato intermedio `isStopping` ("Salvataggio e cancellazione eco..." con spinner), pulsante d'importazione file circolare allineato a destra, dock di stato inferiore ad altezza bloccata (badge salvataggio/trascrizione con `LoaderCircle` ed eventuale errore): tutto letto da `session`, nessuna prop. Ospita anche la toolbar in alto a destra (`fixed right-6 top-6 z-10`) con il pulsante per attivare la modalità ridotta a bordo schermo (`PanelRightClose`) e il pulsante delle impostazioni (`Settings`).
 
-Il bottone non usa glifi Unicode: dentro un flex centrato (`gap-2.5`, `tracking-[0.12em]`) un dot `size-2.5` in `bg-current` (`rounded-full` a riposo, `rounded-[2px]` in STOP) accanto alla sola label, con `-mr-[0.12em]` che compensa lo spazio frazionario del letter-spacing in coda. `session.isRecording` sceglie ramo e token ombra (`shadow-rec-active` contro `shadow-rec`).
+### `CompactStrip.svelte`
+
+Linguetta compatta per la modalità ridotta ancorata al bordo destro dello schermo. Adotta una grafica macOS premium pulita e coerente con i toni scuri e caldi dell'app (`bg-brand-darker/95`, `border-brand-cream/15`, dot caldo `bg-rec`/`bg-danger`), senza animazioni appariscenti o effetti neon.
+
+- **I 2 stati della linguetta**:
+  1. **Idle (non hover)**: sporge dal bordo solo una linguetta discreta aumentata a `w-[12px]` (`rounded-l-2xl`) con un sobrio micro-dot fisso. La finestra ha ingombro minimo (18px) e non intercetta click esterni.
+  2. **Hover (sopra la linguetta)**: la linguetta si allarga a soli `w-[82px]` con layout ultra-compatto:
+    - Spazio azzerato tra bordo sinistro e pulsante REC/STOP.
+    - Pulsante circolare REC/STOP senza timer (icona Play centrata poco a destra con `translate-x-0.5`, stop square in registrazione).
+    - Icona `Maximize2` per espandere a schermo intero nuda e cliccabile (senza round button, solo icona con hover reattivo `text-ink-faint` → `text-ink-primary`).
+    - I 6 puntini verticali `GripVertical` posizionati a ridosso del bordo schermo destro.
+- **Spostamento verticale (Draggable)**: trascinando l'icona a 6 puntini verticali `GripVertical` tutta a destra, la linguetta si sposta in altezza lungo il bordo destro dello schermo (`set_compact_y`), con clamp automatico sopra al dock e sotto la menu bar.
+- Interagisce direttamente con `commands::window` (`set_compact_hover`, `set_compact_y`, evento `compact-stage`) e `session.setCompactMode`.
+
+Il bottone REC/STOP (`h-32 w-32`) vive dentro un bezel esterno concentrico (`p-2.5 rounded-full border border-brand-cream/10 bg-brand-darker/60 shadow-raised`). Adotta uno stile visivo minimale e pulito coerente con gli altri bottoni dell'app: ombre neutre (`shadow-raised`), transizione fluida del colore a 200ms (`bg-rec` → `enabled:hover:bg-rec-strong`), lieve micro-scale all'hover (`enabled:hover:scale-[1.02]`) e feedback tattile alla pressione (`enabled:active:scale-[0.96]`), senza glow o rilievi 3D artificiali. A riposo mostra l'icona di play watermark coordinata (`Play size={88} fill="currentColor" text-black/10 -translate-x-[1.5px] scale-y-[1.08]`), senza testo né dot bianco, con accessibilità garantita da `aria-label` in italiano. Durante il salvataggio (`session.isStopping`), il bottone si disabilita e mostra uno spinner centrale per evitare clic multipli e corse critiche. In registrazione, mostra al centro il cronometro ingrandito `tabular-nums` in tempo reale (`formatDuration`, `text-lg font-bold`) centrato verticalmente, con alle spalle sull'asse z un quadrato di stop watermark molto discreto (`size-16 rounded-lg bg-black/10`) che suggerisce visivamente la funzione di stop senza rumore testuale. A destra del REC siede il pulsante circolare "Carica file audio" (`Button variant="icon"` con icona `Upload`), fisso e disabilitato durante registrazione e salvataggio.
+
+Sotto al bottone, un dock ad altezza bloccata (`h-8 w-full max-w-md`) alloggia la pillola di salvataggio/trascrizione in corso (con spinner `LoaderCircle` e tempo trascorso) o i messaggi di blocco/errore in italiano. L'altezza fissa del dock azzera qualunque layout shift della sezione "Registrazioni" sottostante durante l'intero ciclo di vita della sessione.
 
 Dopo uno STOP o un import riusciti chiama `recordings.load(true)`: la lista sta nella stessa schermata e senza quel refresh la registrazione appena fatta non comparirebbe. Il refresh vive qui e non dentro `session` perché la direzione delle dipendenze fra store è `recordings → session`, non il contrario.
 
@@ -211,65 +248,77 @@ Lista delle registrazioni, puramente presentazionale: nessuna prop, nessun heade
 
 Stato vuoto: card con bordo tratteggiato, icona `AudioLines`, titolo e hint ("Premi REC...") — non una riga ridotta a placeholder, perché è il primo volto della home per un utente nuovo.
 
-Ogni riga non è un unico `<button>`: è un `<div>` che contiene un `<button>` (nome, tempo di trascrizione, badge a 3 stati da `transcriptStatusInfo`, naviga a `/detail/<name>`) e un `Button` "Rilancia" separato (nesting di bottoni non è HTML valido).
-
-Due blocchi distinti, non uno solo:
-- la riga è cliccabile sempre tranne durante una registrazione (`session.isRecording`): aprire il dettaglio porterebbe via dalla home, dove vivono stop e cronometro. Durante la sola trascrizione resta cliccabile
-- "Rilancia" compare solo dove `transcriptStatus(entry) !== "transcribed"` ed è `disabled` su `session.locked` (registrazione **o** trascrizione, perché due trascrizioni insieme non si possono). Su una registrazione già trascritta il rilancio resta disponibile dal dettaglio
+Le registrazioni sono organizzate in un elenco lineare a schede distanziate (`flex flex-col gap-2` con card `rounded-lg border border-brand-cream/8 bg-brand-dark/40 px-3.5 py-2.5`):
+- **Titolo e metadati (a sinistra)**: nessun'icona ripetuta a sinistra; mostra direttamente il nome convertito in data naturale leggibile (`formatRecordingDate`, es. "Oggi, 14:23", "Ieri, 09:12") con durata dell'audio affiancata in font mono (`formatSeconds`).
+- **A destra**: badge compatto di stato con dot semantico (Trascritto / Elaborazione... / Fallito / In attesa) con eventuale tempo di trascrizione o cronometro elapsed; se la trascrizione è fallita o in attesa, pulsante icona compatto `RotateCcw` per riprovare senza occupare spazio; freccia `ChevronRight` a destra con micro-transizione orizzontale all'hover per le righe trascritte.
+- **Interattività**: per le registrazioni trascritte l'intera riga è un `<button type="button">` nativo a tutta larghezza con feedback visivo (`cursor-pointer`, hover border/bg e active scale), eliminando zone morte sui padding e aprendo affidabilmente la modale di dettaglio (`push("/detail/<name>")`); disabilitata solo durante la registrazione attiva (`session.isRecording`) o l'elaborazione. Per registrazioni non trascritte o in errore la riga resta un contenitore informativo con il solo pulsante di retry, senza annidamento di bottoni.
 
 ### `SttIndicator.svelte`
 
-Indicatore di stato flottante in basso a sinistra, presente su ogni rotta tranne `/settings` (dove lo stato del server è già mostrato dentro le sezioni `ServerControls`: duplicarlo a schermo è rumore). Unica prop: `status: SttStatus`.
+Indicatore di stato flottante in alto a sinistra, presente sulla home (nelle pagine interne non compare per non sovrapporsi al tasto Indietro dell'header; su `/settings` lo stato è già mostrato dentro le sezioni `ServerControls`: duplicarlo a schermo è rumore). Unica prop: `status: SttStatus`. È interattivo come link per aprire direttamente la schermata delle impostazioni posizionandosi sulla sezione del server STT (`push("/settings?section=stt-server")`). Il refresh dello stato del server viene comunque eseguito in automatico al focus della finestra dell'app.
 
 | Stato | Dot | Label |
 |---|---|---|
 | `checking`, `starting` | `warn` lampeggiante | "Avvio..." |
-| `running` | `ok` attenuato | "Server attivo" |
-| `error` | `danger` | "Server non disponibile" |
-| `stopped` | `brand-light` (idle) | "Server fermo" |
+| `running` | `ok` pieno | "STT pronto" |
+| `error` | `danger` | "STT non disponibile" |
+| `stopped` | `brand-light` (idle) | "STT non scaricato" |
 
-Nessuno stato ha sfondo o ombra: l'indicatore è un dettaglio di servizio, il colore semantico vive solo sul dot e il testo è `brand-cream/50` uniforme. `SttStatus` esclude `loading` (esiste solo per llama-server, che apre la porta a modello da caricare: whisper-server no), quindi l'indicatore STT non lo conosce e mostra solo lo stato STT, non quello LLM (vedi `architecture.md`).
+Nessuno stato ha sfondo o ombra: a riposo in alto a sinistra si presenta con il dot semantico affiancato dall'icona del server sempre visibile (`Server`, `size={14}`, altezza `h-8`, posizionato a `left-6 top-6` coerentemente con il padding di pagina `px-6` e allineato al pulsante impostazioni a `right-6 top-6`), mantenendo l'intera area cliccabile per aprire le impostazioni; al passaggio del mouse (`:hover`) o al focus da tastiera si espande con transizione orizzontale fluida (`transition-all duration-200 ease-out`) la sola label testuale (`text-xs text-ink-muted` → `text-ink-primary`). `SttStatus` esclude `loading` (esiste solo per llama-server, che apre la porta a modello da caricare), quindi l'indicatore STT non lo conosce e mostra solo lo stato STT, non quello LLM (vedi `architecture.md`).
 
 ### `Onboarding.svelte`
 
-View a schermo intero (non un modal), mostrata da `App.svelte` al posto della UI normale quando `!modelReady`. Logo (`public/icon.png`), titolo e sottotitolo fissi, poi tre stati in sequenza: CTA "Scarica il modello" → progress bar sull'evento `download-progress` (stesso comando `download_local_model` e stesso evento di `SettingsPanel`) con il messaggio "prenditi un caffè" visibile solo mentre `downloading` è vero → messaggio finale e bottone "Continua". Nessun bottone "salta": l'unica uscita è un download riuscito.
+View a schermo intero (non un modal), mostrata da `App.svelte` al posto della UI normale quando `!modelReady`. Logo (`public/icon.png`), titolo e sottotitolo fissi, poi tre stati in sequenza: CTA "Scarica il modello" → progress bar sull'evento `download-progress` (stesso comando `download_local_model` e stesso evento di `SettingsPanel`) con il messaggio "prenditi un caffè" visibile solo mentre `downloading` è vero → configurazione opzionale della cartella per le note Markdown, toggle per l'avvio automatico con il Mac in background (abilitato di default via `@tauri-apps/plugin-autostart`) e bottone "Inizia a usare Earwig". Nessun bottone "salta": l'unica uscita è un download riuscito.
 
-Prop: `onContinue: () => void`, chiamata dal bottone "Continua"; `App.svelte` la collega a `servers.refreshStt()` così `modelReady` si aggiorna e il rendering torna da solo alla UI normale, senza che `Onboarding` gestisca la propria visibilità.
+Prop: `onContinue: () => void`, chiamata dal bottone di continuazione; `App.svelte` la collega a `servers.refreshStt()` così `modelReady` si aggiorna e il rendering torna da solo alla UI normale, senza che `Onboarding` gestisca la propria visibilità.
+
+### `AccordionSection.svelte`
+
+Componente riutilizzabile per le sezioni collassabili (`id?`, `title`, `icon`, `badge?`, `isOpen = $bindable(true)`, `class`, `children`). Il contenitore adotta lo stesso linguaggio visivo delle righe della lista (`rounded-lg border border-brand-cream/8 bg-brand-dark/40`), con hover curato: da chiuso risalta l'intera card (`hover:border-brand-cream/25 hover:bg-brand-cream/[0.04] active:scale-[0.995]`), mentre da aperto l'header presenta un hover dedicato (`rounded-t-lg hover:bg-brand-cream/[0.04]`) separato dai figli da `border-t border-brand-cream/6`. Il trigger è una riga cliccabile accessibile (`px-3.5 py-2.5`) con icona a sinistra (`size={17}`), titolo (`text-sm font-semibold tracking-wide`), eventuale pillola `badge` e chevron a destra (`size={15}`) con rotazione a 200ms. Il corpo si apre e si chiude con `transition:slide={{ duration: 200 }}` di Svelte.
 
 ### `SettingsPanel.svelte`
 
-Rotta `/settings` con permessi OS, download dei modelli, controllo server STT/LLM e percorsi. Corpo a griglia (`grid-cols-1 md:grid-cols-2`, tetto `max-w-400`); il `PageHeader` ha solo il back, non c'è un bottone Salva. Colonna sinistra (core, sempre rilevante): Permessi, Modello Whisper, Server STT, Cartella registrazioni. Colonna destra (opzionale, additiva): Modello LLM, Server LLM — stessa distinzione già in [`architecture.md`](architecture.md) fra STT (sempre necessario) e LLM (riassunto/chat, lazy). Sotto il breakpoint `md` (768px) le due colonne si impilano in una sola. La sezione permessi viene per prima perché blocca tutto il resto.
+Modale `/settings` (incapsulata in `Modal.svelte`, `maxWidth="max-w-xl"`) con permessi OS, cartella registrazioni, cartella note Markdown, download del modello vocale STT, controlli del server STT e percorsi. L'interfaccia è organizzata in sezioni collassabili animate con `AccordionSection.svelte`, tutte aperte di default senza alcuna animazione al landing.
 
-Nessuna prop: era un modal con otto props passate da `App.svelte`, ora legge `servers` e `session` direttamente. Il back chiude con `pop()`, non con una callback del genitore. Non serve un bottone Salva: l'unico campo persistito è la scelta del modello LLM, salvata subito da `set_llm_model` lato Rust, mentre `localReady`/`llmReady` vengono ricalcolati da disco ad ogni `get_stt_settings`.
+Supporta il deep-linking con auto-scroll tramite querystring (es. `/settings?section=stt-server`): un `$effect` reattivo su `router.querystring` individua l'elemento target, ne assicura l'apertura se collassato ed esegue lo scroll fluido automatico (`scrollIntoView({ behavior: "smooth", block: "start" })`).
 
-Le sezioni server STT e LLM sono due istanze di `ServerControls.svelte` (vedi sotto). Tutti i comandi server passano da due helper interni (`runStt(cmd, opts?)` / `runLlm(cmd)`: busy flag, `invoke`, refresh dello stato in `App.svelte`, errore nella card di stato); lato STT:
-- **Avvia** → `start_stt_server`, poi `servers.refreshStt()`
-- **Riavvia** → `restart_stt_server`, poi `servers.refreshStt()`
-- **Spegni** → `stop_stt_server`, poi `servers.refreshStt({ attemptStart: false })` (NON riavvia automaticamente)
-- **Elimina modello** → `delete_local_model`, poi `servers.refreshStt()` (aggiorna `modelReady` a `false`, che fa ricomparire `Onboarding` al posto del router) e, se non c'è errore, `pop()`
+Corpo a colonna singola centrata (`max-w-xl`, `gap-3` fra le card); l'header della modale mostra il titolo "Impostazioni" e il pulsante di chiusura `X` (`onclose`).
+- **Avvio di sistema**: prima sezione delle impostazioni (icona `Power`) con switch interattivo per abilitare o disabilitare l'esecuzione in background all'accensione del Mac, sincronizzato direttamente con il LaunchAgent di macOS via `@tauri-apps/plugin-autostart`.
+- **Permessi**: microfono e cattura audio sistema con righe divise da `divide-brand-cream/6`, icone `text-ink-secondary` (risaltano a `brand-cream` all'hover) e badge pillola di stato ("Concesso" verde `text-ok` con `Check` vs "Non concesso" grigio); ogni riga è evidenziata delicatamente all'hover (`hover:bg-brand-cream/[0.04]`) e cliccabile per aprire le impostazioni di sistema macOS, con refresh automatico al rientro nell'app (`focus`).
+- **Cartella registrazioni**: riga percorso testuale cliccabile per rivelare la cartella nel Finder.
+- **Note Markdown**: riga destinazione note `.md` cliccabile per rivelare la cartella nel Finder, pulsante "Scegli cartella" / "Cambia cartella" via dialog nativo macOS (`open({ directory: true })`) e pulsante "Ripristina predefinita".
+- **Server STT**: card unificata con id `stt-server` che raggruppa modello e motore in-process in un'unica struttura a righe coerente divise da `divide-brand-cream/6`:
+  - Riga **Modello**: nome del modello (Parakeet TDT 0.6B v3) e pulsante a icona per il ri-download.
+  - Riga **Stato**: dot semantico e label di stato ("Attivo", "Fermo", "Non scaricato", "Download in corso...") affiancato dalla toolbar compatta di controlli (`Play`, `RotateCcw`, `Square`, `Trash2` o `Download`).
+  - Riga **Percorso**: path monospazio cliccabile per rivelare la cartella dei modelli nel Finder.
+  - Eventuale barra di avanzamento download o messaggio d'errore in coda.
 
-Sezione "Modello LLM": campo di ricerca con debounce (~400ms, query di default "instruct" a campo vuoto). La prima fetch è lazy: parte al primo focus del campo, non all'apertura del pannello (chi apre le impostazioni per i permessi non costa una chiamata a Hugging Face). Poi → `search_hf_models` → lista repo (nome, licenza dai tag, download) → click espande e chiama `get_hf_model_files` (i file GGUF divisi in shard, `<nome>-NNNNN-of-NNNNN.gguf`, sono filtrati via lato Rust: fuori scope, vedi `DEVLOG.md`) → lista file `.gguf` con dimensione reale e un badge "consigliato/pesante per la tua RAM" (euristica su `get_system_memory_gb`, mai bloccante) → click su un file chiama `set_llm_model` (con la size) e aggiorna `settings` in locale (`llmReady` torna `false` finché il download non completa). Repo `gated` mostrato ma non selezionabile (lucchetto + messaggio, nessun flusso di login HF).
+### `ServerControls.svelte`
 
-Subito sotto il box "Selezionato" c'è il bottone di download (mirror di quello whisper: stessa progress bar, stesso stile), con 4 stati:
+Componente dedicato ai controlli di un server locale (`title?`, `status`, `error`, `hint?`, `loading`, `locked`, `canStart`, `dangerLabel`, callbacks). Presenta lo stato in modo compatto e coerente con la card del modello (riga con dot semantico `bg-ok` / `bg-warn` / `bg-brand-light` e testo "Attivo" / "Caricamento..." / "Fermo") e una toolbar orizzontale di azioni a sole icone compatte (`size-7`, pulsanti `Button variant="icon"`):
+- **Avvia**: icona `Play`
+- **Riavvia**: icona `RotateCcw`
+- **Ferma**: icona `Square`
+- **Azione distruttiva**: icona `Trash2` con stile di pericolo (`text-danger hover:border-danger/30 hover:bg-danger/10`) e tooltip contestuale (`dangerLabel`).
 
-| Condizione | Label |
-|---|---|
-| nessun modello selezionato | bottone non renderizzato |
-| download in corso | "Download in corso..." (disabled) |
-| selezionato, non ancora scaricato | "Scarica modello (X GB)" |
-| già scaricato (`llmReady`) | "Scarica di nuovo (X GB)" |
-
-Il download (`download_llm_model`) ascolta l'evento dedicato `llm-download-progress`; a `step: "done"` ricarica `settings` da `get_stt_settings` (non setta `llmReady` in ottimismo: la verità è il file su disco) e richiama `servers.refreshLlm`.
-
-Sezione "Server LLM" sotto: seconda istanza di `ServerControls` con `llmStatus`/i comandi `*_llm_server`; Avvia/Riavvia sono `disabled` anche quando `!settings.llmReady` (prop `canStart`, con il messaggio "Scarica prima il modello." come `hint` nella card di stato), e il bottone danger è "Elimina modelli scaricati" (`clear_llm_cache`, cancella sia i modelli scaricati da earwig sia la vecchia cache nativa di llama-server). La scelta di un modello dalla ricerca HF (`selectModel`) chiama anche `servers.refreshLlm({ attemptStart: false })`: il nuovo modello non è sul disco, e senza quel giro la store resterebbe con un `llmReady` stale che tiene abilitato il CTA del dettaglio trascrizione. `sttLoading`/`sttError` e `llmLoading`/`llmError` sono stati locali separati per sezione: un errore sul server LLM non disabilita i controlli whisper e viceversa. I tre box "Percorso"/"Selezionato" sono un unico snippet Svelte locale (`pathBox`).
+Tutti i comandi server passano da helper interni (`runStt` / `runLlm`: busy flag, `invoke`, refresh dello stato in `App.svelte`, errore mostrato in rosso sotto la riga di stato).
 
 ### `RecordingDetail.svelte`, `TranscriptView.svelte`
 
-Dettaglio con reveal della cartella; rendering della trascrizione raggruppata per speaker con barra colorata a sinistra.
+Dettaglio della singola registrazione, incapsulato in `Modal.svelte` (`maxWidth="max-w-5xl"`, `h-[85vh]`):
 
-`RecordingDetail` è una rotta e non riceve props dal genitore oltre a `params.id`: legge le registrazioni da `recordings` e il lock da `session.locked`.
-
-In `RecordingDetail` un bottone "Rilancia trascrizione" nell'header (stesso stile di "Apri cartella") chiama `recordings.retryTranscription`: l'aggiornamento torna da solo, perché `entry` è un `$derived` su `recordings.byName(id)`. Finché `recordings.load()` non ha risposto il componente mostra "Caricamento...", non "non trovata": arrivando qui direttamente dall'URL la store è ancora vuota e l'assenza non significherebbe nulla. A `load()` conclusa, un `id` senza riscontro (registrazione cancellata) fa `replace("/")`. Il corpo mostra `TranscriptView` se `entry.transcript` è presente, altrimenti il messaggio d'errore in rosso se `entry.error` è presente, altrimenti "Trascrizione non ancora disponibile." Sotto la card trascrizione, `TranscriptNotes` riceve `entry` e lo stato LLM letto da `servers`.
+- **Accesso**: l'apertura del dettaglio da `RecordingsList` o URL è consentita solo per registrazioni in stato `transcribed`; tentativi su file non trascritti o inesistenti chiudono la modale e ripristinano l'hash `/`.
+- **Testata modale**:
+  - Titolo dinamico formattato con la data naturale (`formatRecordingDate(entry.name)`, es. "Oggi, 14:23").
+  - Durata audio con icona orologio `Clock` e testo monospazio (`formatSeconds`), senza stile badge.
+  - Pulsante a icona "Copia tutto" (`Copy` / `Check`, `Button variant="icon"`) per copiare l'intera conversazione negli appunti con feedback visivo.
+  - Pulsante a icona cartella (`Folder`, `Button variant="icon"`) per aprire e rivelare la directory nel Finder (`revealItemInDir`).
+  - Pulsante a icona per rilanciare la trascrizione (`RotateCcw`, `Button variant="icon"`).
+  - Pulsante di chiusura circolare `X`.
+- **Area conversazione (Trascrizione a tutta larghezza stile GPT)**:
+  - Layout a tutta larghezza e a tutta altezza senza sidebar né bottom bar: il dialogo sfrutta l'intero corpo della modale.
+  - Voci contrassegnate semplicemente da **"Tu:"** (rosso `red-400`, microfono) allineato a destra e **"Altri:"** (viola `purple-400`, sistema) allineato a sinistra.
+  - Micro-azione di copia del singolo intervento al passaggio del mouse con feedback visivo temporizzato.
 
 ### `TranscriptNotes.svelte`, `TranscriptChat.svelte`, `src/lib/llm.ts`
 
@@ -279,9 +328,9 @@ Un errore in chat non persiste il messaggio utente: resta in `pendingQuestion`, 
 
 `llm.ts` è l'unico file che conosce l'AI SDK: `createOpenAICompatible` col `fetch` di `@tauri-apps/plugin-http` (vedi `architecture.md`), `buildTranscriptContext` (righe `[m:ss] IO/INTERLOCUTORE` o testo grezzo, con cap e flag `truncated`), `streamSummary`/`streamChatReply` (wrapper di `streamText`), `parseSummary` (parser tollerante delle quattro sezioni marcate).
 
-### `Button.svelte`
+Il bottone dell'app: cinque varianti (`ghost`, `icon`, `solid`, `danger`, `primary`) come stringhe di utility Tailwind composte con `cn()` (le classi passate via `class` vincono sui conflitti grazie a tailwind-merge, es. per padding/size diversi a parità di variante). Tutte le varianti usano `inline-flex items-center justify-center` per garantire il perfetto allineamento del contenuto (testo o icone SVG). Non c'è nessuna libreria di primitivi UI.
 
-Il bottone dell'app: cinque varianti (`ghost`, `icon`, `solid`, `danger`, `primary`) come stringhe di utility Tailwind composte con `cn()` (le classi passate via `class` vincono sui conflitti grazie a tailwind-merge, es. per padding/size diversi a parità di variante). Non c'è nessuna libreria di primitivi UI.
+`icon` è il pulsante rotondo compatto per azioni a icona singola (impostazioni, back, CTA in card e toolbar): `inline-flex items-center justify-center shrink-0 rounded-full border border-brand-cream/15 bg-brand-darker/85 size-8 p-0 text-ink-secondary shadow-raised backdrop-blur-sm`, con feedback tattile `active:scale-[0.95]` e contrasto pieno su hover (`hover:bg-brand-cream hover:text-brand-darker hover:border-brand-cream/30`). La combinazione `size-8 p-0` offre una dimensione base di 32px con zero padding, permettendo l'override pulito con `size-7` (28px) nelle toolbar compatte di `SettingsPanel` e `ServerControls` senza che padding residui decentrino le icone (es. `Play` in `ServerControls` include `translate-x-px` per la compensazione ottica del triangolo).
 
 `solid` e `primary` sono i due bottoni di conferma: entrambi bianchi (`brand-cream`) con testo scuro e hover `brand-cream-dim`, distinti solo dalla taglia (`primary` è il CTA grande dell'onboarding). `danger` resta rosso pieno: il rosso distruttivo è convenzione, non palette di brand.
 
@@ -297,18 +346,18 @@ Barra di avanzamento download modello, usata da `Onboarding` e da `SettingsPanel
 
 Tailwind CSS v4 con config CSS-first (niente `tailwind.config.js`): plugin `@tailwindcss/vite` e `@import "tailwindcss"` in `src/App.css`. Utility inline nel markup, nessun `<style>` nei componenti.
 
-Palette in `@theme`, namespace `brand-*` per non collidere con i token base di Tailwind. I grigi sono **caldi**: stessa luminanza dei neutri puri ma con la componente rossa sopra la blu di 3-6 punti. Un token grigio aggiunto fuori da questa tinta stona con il resto.
+Palette in `@theme`, namespace `brand-*` per non collidere con i token base di Tailwind. I grigi sono **scuri e profondi con una nota di rosso caldo**: luminanza più profonda (~10%), con la componente rossa calda spostata (tinta sui 12-14°, con R dominante e G > B per evitare dominanti violacee o fredde), conferendo un sottotono caldo/ambra scura coerente con l'accento REC. Un token grigio aggiunto fuori da questa tinta stona con il resto.
 
 | Token | Hex | Uso |
 |---|---|---|
-| `brand-dark` | `#1e1c19` | sfondo app |
-| `brand-darker` | `#141311` | superfici, card, pannelli |
-| `brand-light` | `#94908a` | grigio chiaro: testo secondario, bolla utente in chat |
-| `brand-lighter` | `#3e3b37` | grigio medio: superficie rialzata, bottone di conferma disabilitato |
-| `brand-lightest` | `#4e4a45` | gradino grigio più chiaro |
-| `brand-cream` | `#f7f5f1` | testo su fondo scuro, bottoni di conferma |
-| `brand-cream-dim` | `#e8e4de` | hover dei bottoni di conferma |
-| `brand-ink` | `#0b0a08` | testo su superfici chiare |
+| `brand-dark` | `#211512` | sfondo app |
+| `brand-darker` | `#170f0c` | superfici, card, pannelli |
+| `brand-light` | `#947a72` | grigio chiaro: testo secondario, bolla utente in chat |
+| `brand-lighter` | `#3f2923` | grigio medio: superficie rialzata, bottone di conferma disabilitato |
+| `brand-lightest` | `#52362f` | gradino grigio più chiaro |
+| `brand-cream` | `#f9f5f3` | testo su fondo scuro, bottoni di conferma |
+| `brand-cream-dim` | `#ebe3df` | hover dei bottoni di conferma |
+| `brand-ink` | `#0c0605` | testo su superfici chiare |
 
 Il rosso non è più colore di brand: vive in due token separati, usati solo dalla registrazione (bottone REC, alone pulsante, timer).
 
@@ -327,7 +376,7 @@ Tema unico dark fisso: niente variante `dark:`, niente token semantici.
 
 Alias `$lib` → `src/lib` dichiarato sia in `vite.config.ts` (`resolve.alias`) sia in `tsconfig.json` (`compilerOptions.paths`, mai `baseUrl`): non essendo SvelteKit non è automatico.
 
-Icone dell'app in `src-tauri/icons/`: `bundle.icon` di `tauri.conf.json` referenzia `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns` e `icon.ico` (piattaforma Windows), mentre `icon.png` e `64x64.png` restano come sorgenti a risoluzione piena e non entrano nel bundle. `public/icon.png` (512×512) alimenta il logo in `Onboarding.svelte`, la favicon webview in `index.html` e il logo in `README.md`.
+Icone dell'app in `src-tauri/icons/`: `bundle.icon` di `tauri.conf.json` referenzia `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns` e `icon.ico` (piattaforma Windows), mentre `icon.png` e `64x64.png` restano come sorgenti a risoluzione piena e non entrano nel bundle. `public/icon.png` (1024×1024) alimenta il logo in `Onboarding.svelte`, la favicon webview in `index.html` e il logo in `README.md`. L'icona per la barra dei menu macOS (`TrayIconBuilder` con `icon_as_template(true)`) è alimentata da `src-tauri/icons/tray-icon.png` (32×32 @2x, sagoma monocromatica su sfondo trasparente), rasterizzata dal master vettoriale `earwig.svg` (presente in `src-tauri/icons/` e `public/`).
 
 ## Lint e format
 
